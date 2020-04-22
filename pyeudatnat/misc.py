@@ -35,6 +35,8 @@ try:
 except ImportError:            
     pass 
 
+import numpy as np
+
 try:
     import zipfile
 except:
@@ -44,10 +46,11 @@ else:
 
 from pyeudatnat import PACKNAME
 
-ISWIN = os.name=='nt' # sys.platform[0:3].lower()=='win'
+ISWIN           = os.name=='nt' # sys.platform[0:3].lower()=='win'
 
 
 #%%
+
 #==============================================================================
 # Class Miscellaneous
 #==============================================================================
@@ -67,6 +70,124 @@ class Miscellaneous(object):
         [kw.pop(key) for key in keys]
         return kw
 
+
+#%%
+#==============================================================================
+# Class Type
+#==============================================================================
+
+class Type(object):   
+    
+    # Variables of useful types conversions
+    __PYTYPES = {'object':'object', \
+                 'int':'uint8', 'uint8':'uint8', 'uint16':'uint16', 'int16':'int16',    \
+                 'long': 'uint32', 'uint32':'uint32', 'int32':'int32',                  \
+                 'float':'float32', 'float32':'float32', 'float64':'float64'            \
+                 }
+    
+    # Python pack types names
+    __PPTYPES = ['B', 'b', 'H', 'h', 'I', 'i', 'f', 'd'] # personal selection
+    #=========   ==============  =================   =====================
+    #Type code   C Type          Python Type         Minimum size in bytes
+    #=========   ==============  =================   =====================
+    #'c'         char            character           1
+    #'u'         Py_UNICODE      Unicode character   2
+    #'B'         unsigned char   int                 1
+    #'b'         signed char     int                 1
+    #'H'         unsigned short  int                 2
+    #'h'         signed short    int                 2
+    #'I'         unsigned int    long                2
+    #'i'         signed int      int                 2
+    #'L'         unsigned long   long                4
+    #'l'         signed long     int                 4
+    #'f'         float           float               4
+    #'d'         double          float               8
+    #=========   ==============  =================   =====================    
+    #See http://www.python.org/doc//current/library/struct.html and
+    #http://docs.python.org/2/library/array.html.
+    
+    # NumPy types names
+    __NPTYPES         = [np.dtype(n).name for n in __PPTYPES+['l','L','c']]
+    
+    # Pandas types names
+    __PDTYPES         = [np.dtype(n).name for n in ['b', 'i', 'f', 'O', 'S', 'U', 'V' ]]
+    #=========   ==============  
+    #Type code   C Type
+    #=========   ==============  
+    #'b'         boolean
+    #'i'         (signed) integer
+    #'u'         unsigned integer
+    #'f'         floating-point
+    #'c'         complex-floating point
+    #'O'         (Python) objects
+    #'S', 'a'    (byte-)string
+    #'U'         Unicode
+    #'V'         raw data (void)
+
+    # Dictionary of Python pack types -> Numpy
+    __PPT2NPT = {n:np.dtype(n).name for n in __PPTYPES}
+    # See http://docs.scipy.org/doc/numpy/reference/arrays.dtypes.html and
+    # http://docs.scipy.org/doc/numpy/reference/arrays.scalars.html.
+
+    # Python pack types <-> Numpy conversion
+    ppt2npt = lambda t: Type.__PPT2NPT[t]
+    # note regarding np.dtype:
+    #   np.dtype('B')           -> dtype('uint8')
+    #   np.dtype('uint8')       -> dtype('uint8')
+    #   np.dtype(np.uint8)      -> dtype('uint8')
+    # so that on the current machine where it is implemented
+    # assert ppt2npy == {'B':'uint8','b': 'int8','H':'uint16','h':'int16','I':'uint32',
+    #   'i':'int32', 'f':'float32', 'd':'float64'}
+    # but... in the future?!         
+    
+    # Numpy -> Python pack types conversion
+    npt2ppt = lambda t: dict(Type.__PPT2NPT.values(), Type.__PPT2NPT.keys())[t]
+    
+    # Dictionary of Python -> Numpy
+    __NPT2PYT = { np.dtype('b'):                bool,
+                  np.dtype('i'):                bool,
+                  np.dtype('O'):                str,
+                  object:                       str,
+                  np.dtype('i'):                int, 
+                  np.dtype('uint32'):           int, 
+                  np.dtype('int'):              int, 
+                  np.dtype('f'):                float, 
+                  np.dtype(float):              float,
+                  np.dtype('datetime64'):       datetime,
+                  np.dtype('datetime64[ns]'):   datetime
+                 } 
+
+    # Numpy -> Python types conversion
+    npt2pyt = lambda t: Type.__NPT2PYT[t]
+    
+    # Pandas -> Python types conversion
+    pdt2pyt = npt2pyt
+  
+    # Dictionary of Python -> Numpy
+    def __rev_dict_unique_values(d):
+        dd = {}
+        [dd.setdefault(v, []).append(k) for (k,v) in d.items()]  
+        return dd 
+    __PYT2NPT = __rev_dict_unique_values(__NPT2PYT)        
+    #__PY2NPT = { bool:      [np.dtype('b'), np.dtype('i')],
+    #             str:        [np.dtype('O'), object], 
+    #             int:        [np.dtype('i'), np.dtype('uint32'), np.dtype('int')],
+    #             float:      [np.dtype('f'), np.dtype(float)],
+    #             datetime:   [np.dtype('datetime64'), np.dtype('datetime64[ns]')],
+    #             } 
+        
+    # Python -> Numpy types conversion
+    pyt2npt = lambda t: Type.__PYT2NPT[t]
+    
+    # Python -> Pandas types conversion
+    pyt2pdt = pyt2npt
+    
+    # Python type name -> Numpy type conversion
+    pytname2npt = lambda t: {k.__name__:v for (k,v) in Type.__PYT2NPT.items()}[t]
+
+    # Python type name -> Pandas type conversion
+    pytname2pdt = pytname2npt
+    
 
 #%%
 #==============================================================================
