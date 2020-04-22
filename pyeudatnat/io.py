@@ -322,7 +322,7 @@ class Dataframe(object):
 
     #/************************************************************************/
     @staticmethod
-    def out_date(df, column, ofmt, ifmt='%d-%m-%Y %H:%M'): # ofmt='%d/%m/%Y'
+    def out_date(df, column, ofmt=None, ifmt=None): # ofmt='%d/%m/%Y', ifmt='%d-%m-%Y %H:%M')
         """Cast the column of a dataframe into datetime.
         """
         try:
@@ -334,11 +334,15 @@ class Dataframe(object):
                 isinstance(ifmt, string_types) 
         except:
             raise TypeError("Wrong format for input date templates")
+        if ifmt in (None,'') :
+            kwargs = {'infer_datetime_format': True}  
+        else:
+            kwargs = {}
         if ofmt in (None,'') or ofmt == '':
             return df[column].astype(str)    
         else:            
             try:
-                f = lambda s: datetime.strptime(s, ifmt).strftime(ofmt)
+                f = lambda s: datetime.strptime(s, ifmt, **kwargs).strftime(ofmt)
                 return df[column].astype(str).apply(f)
             except:
                 return df[column].astype(str)    
