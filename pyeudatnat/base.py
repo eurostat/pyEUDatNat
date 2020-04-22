@@ -930,6 +930,7 @@ class BaseDatNat(object):
             raise TypeError("wrong input format - must be any string among '%s'" % list(FMT.keys()))
         if dest in (None,''):
             dest = osp.abspath(osp.join(self.config.get('path'), fmt, self.config.get('file') % (self.cc, FMT.get(fmt))))
+            warnings.warn("\n! Output data file '%s' will be created" % dest)
         columns, latlon = kwargs.pop('columns', None), kwargs.pop('latlon', None)
         INDEX = self.config.get('index') or {}
         if columns is None or latlon is None: 
@@ -1039,6 +1040,7 @@ class BaseDatNat(object):
                 dest = osp.join(PACKPATH, self.type, '%s%s.json' % (self.cc, self.type))
             except:
                 dest = osp.join(PACKPATH, '%s.json' % self.cc)
+            warnings.warn("\n! Metadata file '%s' will be created" % dest)
         if _KEEP_META_UPDATED is False:
             meta = self.update_meta()
         else:
@@ -1062,7 +1064,7 @@ def datnatFactory(*args, **kwargs):
     """Generic function to derive a class from the base class :class:`BaseFacility`
     depending on specific metadata and a given geocoder.
     
-        >>>  NewNatDat = datnatFactory(type, meta=None, country=None, coder=None)
+        >>>  NewNatDat = datnatFactory(config=None, meta=None, country=None, coder=None)
         
     Examples
     --------

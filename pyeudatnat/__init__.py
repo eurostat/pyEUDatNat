@@ -59,11 +59,11 @@ __AREA              = [ "EU28", "EFTA" ] # see __countries below: "EU27_2020", "
 
 ## you shouldnt need to change anything below this
 
-__BASENAME          = '' 
+BASENAME            = '' 
 
 __modules           = ['meta', 'misc', 'text', 'geo', 'base', 'harmonise', 'validate'] 
 
-__all__             = ['%s%s' % (__,__BASENAME) for __ in __modules]
+__all__             = ['%s%s' % (__,BASENAME) for __ in __modules]
 __all__.extend(['__version__', '__start__'])
 
 __ext_packages_ext  = ['numpy', 'pandas', 'json', 'datetime', 'geopy', 'geojson', 
@@ -152,5 +152,5 @@ COUNTRIES           = __COUNTRIES
             
 try:
     # del(__SHOWWARNINGS)
-    del(__BASENAME, __AREA, __COUNTRIES, __TERRITORIES)
+    del(__AREA, __COUNTRIES, __TERRITORIES)
 except: pass
