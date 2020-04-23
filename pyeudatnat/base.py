@@ -49,8 +49,8 @@ from pyeudatnat.geo import GeoService, isoCountry
 
 __THISDIR         = osp.dirname(__file__)
 
-_KEEP_INDEX_AS_ILANG = True # that's actually a debug...that is not a debug anymore!
-_KEEP_META_UPDATED = True
+_INDEX_ALWAYS_AS_ILANG = True # that's actually a debug...that is not a debug anymore!
+_META_ALWAYS_UPDATED = False
 
 #%%                
 
@@ -212,7 +212,7 @@ class BaseDatNat(object):
             raise IOError("Wrong CC country code '%s' - must be any valid ISO code from the EU area" % cc)   
         elif cc != next(iter(self.COUNTRY)):
             warnings.warn("\n! Mismatch with class variable 'CC': %s !" % next(iter(self.COUNTRY)))
-        if _KEEP_META_UPDATED is True:
+        if _META_ALWAYS_UPDATED is True and cc is not None:
             self.meta.update({'country': {'code': cc, 'name': COUNTRIES[cc]}}) # isoCountry
         self.__cc = cc
 
@@ -230,7 +230,7 @@ class BaseDatNat(object):
             raise TypeError("Wrong format for LANGuage type '%s' - must be a string" % lang)
         elif not lang in LANGS: # LANGS.keys()
             raise IOError("Wrong LANGuage '%s' - must be any valid ISO language code" % lang)   
-        if _KEEP_META_UPDATED is True:
+        if _META_ALWAYS_UPDATED is True and lang not in (None,{}):
             self.meta.update({'lang': {'code': lang, 'name': LANGS[lang]}}) # isoLang
         self.__lang = lang
 
@@ -241,7 +241,7 @@ class BaseDatNat(object):
     def year(self, year):
         if not (year is None or isinstance(year, int)):         
             raise TypeError("Wrong format for YEAR: '%s' - must be an integer" % year)
-        if _KEEP_META_UPDATED is True:
+        if _META_ALWAYS_UPDATED is True and year is not None:
             self.meta.update({'year': year})
         self.__refdate = year
 
@@ -252,21 +252,7 @@ class BaseDatNat(object):
     def source(self, src):
         if not (src is None or isinstance(src, string_types)):         
             raise TypeError("Wrong format for data SOURCE '%s' - must be a string" % src)
-        #elif src is not None:
-        #    try:
-        #        assert osp.exists(src) is True
-        #    except (OSError,AssertionError):
-        #        warnings.warn("! source file '%s' not found on local disk !" % src)
-        #        try:
-        #            assert _is_requests_installed is True
-        #            response = requests.get(src)
-        #            response.raise_for_status()
-        #        except AssertionError:
-        #            pass
-        #        except (requests.URLRequired,requests.HTTPError,requests.RequestException):
-        #            warnings.warn("\n! source file '%s' not available online !" % src)
-        #            raise IOError("no input source file found")
-        if _KEEP_META_UPDATED is True:
+        if _META_ALWAYS_UPDATED is True and src not in (None,''):
             self.meta.update({'source': src})
         self.__source = src
 
@@ -277,7 +263,7 @@ class BaseDatNat(object):
     def file(self, file):
         if not (file is None or isinstance(file, string_types)):         
             raise TypeError("Wrong format for source FILE '%s' - must be a string" % file)
-        if _KEEP_META_UPDATED is True:
+        if _META_ALWAYS_UPDATED is True and file is not None:
             self.meta.update({'file': None if file is None else osp.basename(file), 
                               'path': None if file is None else osp.dirname(file)})
         self.__file = file
@@ -312,7 +298,7 @@ class BaseDatNat(object):
     def proj(self, proj):
         if not (proj is None or isinstance(proj, string_types)):         
             raise TypeError("Wrong format for PROJection type '%s' - must be a string" % proj)
-        if _KEEP_META_UPDATED is True:
+        if _META_ALWAYS_UPDATED is True and proj is not None:
             self.meta.update({'proj': proj})
         self.__proj = proj
 
@@ -331,7 +317,7 @@ class BaseDatNat(object):
             cols = [{self.lang: col} for col in cols]
         elif not(isinstance(cols, Sequence) and all([isinstance(col, Mapping) for col in cols])): 
             raise TypeError("Wrong Input COLUMNS headers type '%s' - must be a sequence of dictionaries" % cols)
-        if _KEEP_META_UPDATED is True:
+        if _META_ALWAYS_UPDATED is True and cols not in (None,[]):
             self.meta.update({'columns': cols})
         self.__columns = cols
 
@@ -348,7 +334,7 @@ class BaseDatNat(object):
             ind = dict.fromkeys(ind)
         elif not isinstance(ind, Mapping):
             raise TypeError("Wrong Output INDEX type '%s' - must be a dictionary" % ind)
-        if _KEEP_META_UPDATED is True:
+        if _META_ALWAYS_UPDATED is True and ind not in ({},None):
             self.meta.update({'index': ind})
         self.__index = ind
 
@@ -359,7 +345,7 @@ class BaseDatNat(object):
     def sep(self, sep):
         if not (sep is None or isinstance(sep, string_types)):         
             raise TypeError("Wrong format for SEParator '%s' - must be a string" % sep)
-        if _KEEP_META_UPDATED is True:
+        if _META_ALWAYS_UPDATED is True and sep not in ('',None):
             self.meta.update({'sep': sep})
         self.__sep = sep
 
@@ -370,7 +356,7 @@ class BaseDatNat(object):
     def enc(self, enc):
         if not (enc is None or isinstance(enc, string_types)):         
             raise TypeError("Wrong format for file ENCoding '%s' - must be a string" % enc)
-        if _KEEP_META_UPDATED is True:
+        if _META_ALWAYS_UPDATED is True and enc is not None:
             self.meta.update({'enc': enc})
         self.__encoding = enc
 
@@ -856,7 +842,7 @@ class BaseDatNat(object):
             self.clean_column(list(self.data.columns), keep = keepcol)
         except:
             pass
-        if _KEEP_INDEX_AS_ILANG is True:
+        if _INDEX_ALWAYS_AS_ILANG is True:
             self.index.update(columns)
         
     #/************************************************************************/
@@ -983,10 +969,7 @@ class BaseDatNat(object):
         """
         meta = deepcopy(self.meta.to_dict()) # self.meta.__dict__
         for attr in meta.keys():
-            if attr == 'columns':
-                # NO: meta.update({'columns': self.columns})
-                pass
-            elif attr == 'index':
+            if attr == 'index':
                 # NO: meta.update({'index': self.index})
                 pass
             elif attr == 'country':
@@ -1005,7 +988,7 @@ class BaseDatNat(object):
         
             >>> meta = fac.dumps_meta()
         """# basically... nothing much more than self.meta.to_dict()
-        if _KEEP_META_UPDATED is False:
+        if _META_ALWAYS_UPDATED is False:
             self.update_meta()
         try:
             assert kwargs.pop('as_str', False) is False
@@ -1040,7 +1023,7 @@ class BaseDatNat(object):
             except:
                 dest = osp.join(PACKPATH, '%s.json' % self.cc)
             warnings.warn("\n! Metadata file '%s' will be created" % dest)
-        if _KEEP_META_UPDATED is False:
+        if _META_ALWAYS_UPDATED is False:
             self.update_meta()
         # self.meta.dump(dest)
         with open(dest, 'w', encoding=self.enc) as f:
