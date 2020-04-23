@@ -73,23 +73,26 @@ class BaseDatNat(object):
     YEAR = None # for future...
     
     #/************************************************************************/
-    def __init__(self, **kwargs):
+    def __init__(self, *args, **kwargs):
         # self.__config, self.__metadata = {}, {}
         self.__data = None                # data
         self.__columns, self.__index = {}, []
         self.__place, self.__proj = '', None
         try:
-            # config should be initialised in the derived class
-            assert self.__config not in ({},None)
-        except (AttributeError,AssertionError):
-            warnings.warn("\n! No configuration parsed !")
-            self.config = MetaDat()
-        try:
             # meta should be initialised in the derived class
             assert self.__metadata not in ({},None)
         except(AttributeError,AssertionError):
-            warnings.warn("\n! No metadata parsed !")
-            self.meta = MetaDat()
+            if not args in ((),(None,)):        
+                self.meta = MetaDat(args[0])
+            else:
+                #warnings.warn("\n! No metadata parsed !")
+                self.meta = MetaDat()   
+        try:
+            # config should be initialised in the derived class
+            assert self.__config not in ({},None)
+        except (AttributeError,AssertionError):
+            #warnings.warn("\n! No configuration parsed !")
+            self.config = MetaDat()
         # retrieve type
         self.category = kwargs.pop('category', 
                                    self.config.category if hasattr(self.config, 'category') else self.CATEGORY)
@@ -108,7 +111,7 @@ class BaseDatNat(object):
         self.file = None if fname==''                           \
             else osp.join(path, fname) if path not in (None,'') \
             else fname
-        self.src = kwargs.pop('src', self.meta.get('source') or None)
+        self.source = kwargs.pop('source', self.meta.get('source') or None)
         # retrieve caching arguments
         self.cache = {'caching':kwargs.pop('caching',False), 'store':None, 'expire':0, 'force':True}
         if self.cache['caching'] is True:
@@ -206,7 +209,7 @@ class BaseDatNat(object):
         elif not isinstance(cc, string_types):         
             raise TypeError("Wrong format for CC country code '%s' - must be a string" % cc)
         elif not cc in COUNTRIES: # COUNTRIES.keys()
-            raise IOError("Wrong CC country code '%s' - must be any valid code from the EU area" % cc)   
+            raise IOError("Wrong CC country code '%s' - must be any valid ISO code from the EU area" % cc)   
         elif cc != next(iter(self.COUNTRY)):
             warnings.warn("\n! Mismatch with class variable 'CC': %s !" % next(iter(self.COUNTRY)))
         if _KEEP_META_UPDATED is True:
@@ -222,8 +225,11 @@ class BaseDatNat(object):
         return self.__lang
     @lang.setter#analysis:ignore
     def lang(self, lang):
-        if not (lang is None or isinstance(lang, string_types)):         
+        if lang is None:                          pass
+        elif not isinstance(lang, string_types):         
             raise TypeError("Wrong format for LANGuage type '%s' - must be a string" % lang)
+        elif not lang in LANGS: # LANGS.keys()
+            raise IOError("Wrong LANGuage '%s' - must be any valid ISO language code" % lang)   
         if _KEEP_META_UPDATED is True:
             self.meta.update({'lang': {'code': lang, 'name': LANGS[lang]}}) # isoLang
         self.__lang = lang
@@ -240,10 +246,10 @@ class BaseDatNat(object):
         self.__refdate = year
 
     @property
-    def src(self):
-        return self.__src
-    @src.setter#analysis:ignore
-    def src(self, src):
+    def source(self):
+        return self.__source
+    @source.setter#analysis:ignore
+    def source(self, src):
         if not (src is None or isinstance(src, string_types)):         
             raise TypeError("Wrong format for data SOURCE '%s' - must be a string" % src)
         #elif src is not None:
@@ -261,8 +267,8 @@ class BaseDatNat(object):
         #            warnings.warn("\n! source file '%s' not available online !" % src)
         #            raise IOError("no input source file found")
         if _KEEP_META_UPDATED is True:
-            self.meta.update({'src': src})
-        self.__src = src
+            self.meta.update({'source': src})
+        self.__source = src
 
     @property
     def file(self):
@@ -272,7 +278,8 @@ class BaseDatNat(object):
         if not (file is None or isinstance(file, string_types)):         
             raise TypeError("Wrong format for source FILE '%s' - must be a string" % file)
         if _KEEP_META_UPDATED is True:
-            self.meta.update({'file': osp.basename(file), 'path': osp.dirname(file)})
+            self.meta.update({'file': None if file is None else osp.basename(file), 
+                              'path': None if file is None else osp.dirname(file)})
         self.__file = file
         
     #/************************************************************************/
@@ -386,8 +393,8 @@ class BaseDatNat(object):
         
                 >>> fac.load_data('data')
         """
-        src = (src not in ((None,),()) and src[0]) or kwargs.pop('src', None) or self.src                                               
-        file = kwargs.pop('file', None) or self.file                                               
+        src = (src not in ((None,),()) and src[0]) or kwargs.pop('source', None) or self.source                                               
+        file = kwargs.pop('file', None) or self.file 
         if src in (None,'') and file in (None,''):     
              raise IOError("No source filename provided - set keyword file attribute/parameter")
         elif not(src is None or isinstance(src, string_types)):     
@@ -408,7 +415,7 @@ class BaseDatNat(object):
         #if set([col[self.lang] for col in self.columns]).difference(set(self.data.columns)) != set():
         #    warnings.warn('\n! mismatched data columns and header fields !')
         # if everything worked well, update the fields in case they differ
-        if self.src != src:             self.src = src
+        if self.source != src:             self.source = src
         if self.file != file:           self.file = file
         if self.enc != encoding:        self.enc = encoding 
         if self.sep != sep:             self.sep = sep 
@@ -886,11 +893,14 @@ class BaseDatNat(object):
                 raise IOError("Issue when creating JSON attributes")
         try:
             assert kwargs.pop('as_str', False) is False
+        except:
+            kwargs.update({'ensure_ascii': kwargs.pop('ensure_ascii', False)})
+            try:
+                return Json.dumps(results, **kwargs)
+            except:     
+                raise IOError("issue when dumping '%s' attributes" % fmt.upper())
+        else:
             return results
-        except AssertionError:
-            return Json.dumps(results, ensure_ascii=False)
-        except:     
-            raise IOError("issue when dumping '%s' attributes" % fmt.upper())
             
     #/************************************************************************/
     def dump_data(self, *dest, **kwargs):
@@ -948,8 +958,9 @@ class BaseDatNat(object):
             except:
                 raise IOError("Issue when creating %s geometries" % fmt.upper())
             with open(dest, 'w', encoding=encoding) as f:
+                kwargs.update({'ensure_ascii': kwargs.pop('ensure_ascii', False)})
                 try:
-                    Json.dump(results, f, ensure_ascii=False)
+                    Json.dump(results, f, **kwargs)
                 except:
                     raise IOError("Impossible saving metadata file")
         elif fmt == 'gpkg':
@@ -973,14 +984,15 @@ class BaseDatNat(object):
         meta = deepcopy(self.meta.to_dict()) # self.meta.__dict__
         for attr in meta.keys():
             if attr == 'columns':
-                meta.update({'columns': self.columns})
+                # NO: meta.update({'columns': self.columns})
+                pass
             elif attr == 'index':
                 # NO: meta.update({'index': self.index})
                 pass
             elif attr == 'country':
                 meta.update({'country': isoCountry(self.cc)})
             elif attr == 'lang':
-                meta.update({'lang': isoLang(self.cc)})
+                meta.update({'lang': isoLang(self.lang)})
             else:
                 try:
                     meta.update({attr: getattr(self,attr)})
@@ -994,19 +1006,16 @@ class BaseDatNat(object):
             >>> meta = fac.dumps_meta()
         """# basically... nothing much more than self.meta.to_dict()
         if _KEEP_META_UPDATED is False:
-            meta = self.update_meta()
-        else:
-            meta = None
+            self.update_meta()
         try:
             assert kwargs.pop('as_str', False) is False
-            return meta or self.meta.to_dict()
+            return self.meta.to_dict()
         except AssertionError:
+            kwargs.update({'ensure_ascii': kwargs.pop('ensure_ascii', False)})
             try:
-                return Json.dumps(meta or self.meta.to_dict(), ensure_ascii=False)
+                return Json.dumps(self.meta.to_dict(), **kwargs)
             except:
-                try:return Json.dumps(meta or self.meta.to_dict(), ensure_ascii=False, serialize=True)
-                except:     
-                    raise IOError("Impossible dumping metadata file")
+                raise IOError("Impossible dumping metadata file")
 
     #/************************************************************************/
     def dump_meta(self, *dest, **kwargs):
@@ -1032,18 +1041,14 @@ class BaseDatNat(object):
                 dest = osp.join(PACKPATH, '%s.json' % self.cc)
             warnings.warn("\n! Metadata file '%s' will be created" % dest)
         if _KEEP_META_UPDATED is False:
-            meta = self.update_meta()
-        else:
-            meta = None
+            self.update_meta()
         # self.meta.dump(dest)
         with open(dest, 'w', encoding=self.enc) as f:
+            kwargs.update({'ensure_ascii': kwargs.pop('ensure_ascii', False)})
             try:
-                Json.dump(meta or self.meta.to_dict(), f, ensure_ascii=False)
+                Json.dump(self.meta.to_dict(), f, **kwargs)
             except:
-                try:
-                    Json.dump(meta or self.meta.to_dict(), f, ensure_ascii=False, serialize=True)
-                except:
-                    raise IOError("Impossible saving metadata file")
+                raise IOError("Impossible saving metadata file")
           
 
 #%% 
@@ -1073,7 +1078,7 @@ def datnatFactory(*args, **kwargs):
     except AssertionError:
         raise TypeError("Configuration type '%s' not recognised - must be a dictionary or %s" % (type(cfg),MetaDat.__name__))
     if cfg is None:
-        config = {}
+        config = None
     #elif isinstance(cfg, string_types):
     #    try:
     #        config = CONFIGINFO.get(cfg) 
@@ -1111,8 +1116,8 @@ def datnatFactory(*args, **kwargs):
     except AssertionError:
         raise TypeError("Metadata type '%s' not recognised - must be a filename, dictionary or %s" % (type(metadata),MetaDatNat.__name__))
     if metadata is None:
-        metadata = {}
-    if isinstance(metadata,MetaDatNat):
+        meta = None # meta = MetaDatNat({})
+    elif isinstance(metadata,MetaDatNat):
         try:
             meta = metadata.copy()
         except:
@@ -1124,10 +1129,10 @@ def datnatFactory(*args, **kwargs):
             raise IOError("Metadata '%s' not recognised " % metadata)
     # check country
     try:
-        COUNTRY = meta.get('country') if 'country' in meta else kwargs.pop('country', None)
+        COUNTRY = meta.get('country') if meta is not None and 'country' in meta else kwargs.pop('country', None)
         assert COUNTRY is None or isinstance(COUNTRY,(Mapping,string_types))
     except AssertionError:
-        raise TypeError("Country type '%s' not recognised - must be a string or a dictionary" % type(COUNTRY))
+        raise IOError("Country type '%s' not recognised - must be a string or a dictionary" % type(COUNTRY))
     try:
         COUNTRY = isoCountry(COUNTRY)
     except:
@@ -1144,31 +1149,40 @@ def datnatFactory(*args, **kwargs):
     #else:
     #   LANG = ''
     # check survey year
-    year = kwargs.pop('year', None)
-    if year is not None and isinstance(year,int):
-        attributes.update({'YEAR': year})
-    # check geocoder
-    coder = kwargs.pop('coder', None)
     try:
-        assert coder is None or isinstance(coder,string_types) or isinstance(coder,Mapping)
+        YEAR = meta.get('year') if meta is not None and 'year' in meta else kwargs.pop('year', None)
+        assert YEAR is None or isinstance(YEAR,int)
     except AssertionError:
-        raise TypeError("Coder type '%s' not recognised - must be a dictionary or a single string" % type(coder))
-    if not coder in ({}, ''): # None accepted as default geocoder!
-        geoserv = GeoService(coder)
+        raise IOError("Year type '%s' not recognised - must be an integer" % type(YEAR))
+    else:
+        attributes.update({'YEAR': YEAR})
+    # check geocoder
+    CODER = kwargs.pop('coder', None)
+    try:
+        assert CODER is None or isinstance(CODER,(string_types,Mapping))
+    except AssertionError:
+        raise TypeError("Coder type '%s' not recognised - must be a string or a dictionary" % type(CODER))
+    #else:
+    #    attributes.update({'CODER': CODER})
+    if not CODER in ({}, ''): # None accepted as default geocoder!
+        try:
+            geoserv = GeoService(CODER)
+        except:
+            raise IOError("Geocoder '%s' not recognised " % CODER)
     else: 
         geoserv = None
     # redefine the initialisation method
     def __init__(self, *args, **kwargs):
         # one configuration dictionary defined 'per facility'
         try:
-            self.config = config.copy() 
+            self.config = None if config is None else config.copy() 
             # note: creating a "copy" actually creates another TypeFacility instance, 
             # so that this attribute differs from one instance to the other!
         except:
             pass
         # one metadata dictionary defined 'per country'
         try:
-            self.meta = meta.copy()
+            self.meta = None if meta is None else meta.copy()
             # ibid: creating a "copy" actually creates another MetaFacility instance
         except:
             pass
