@@ -28,6 +28,7 @@ import re
 import warnings#analysis:ignore
 
 from collections import OrderedDict, Mapping, Sequence#analysis:ignore
+from six import string_types
 
 import time
 try: 
@@ -59,10 +60,11 @@ class Miscellaneous(object):
     
     #/************************************************************************/
     @staticmethod
-    def clean_kwargs(kwargs, method):
+    def inspect_kwargs(kwargs, method):
         """Clean keyword parameters prior to be passed to a given method/function by
         deleting all the keys that are not present in the signature of the method/function.
         """
+        if kwargs == {}: return {}
         kw = kwargs.copy() # deepcopy(kwargs) 
         parameters = inspect.signature(method).parameters
         keys = [key for key in kwargs.keys()                                          \
@@ -546,7 +548,7 @@ class File(object):
         except:
             raise TypeError("Zip file '%s' not recognised" % file)
         cache = kwargs.pop('cache', File.cache())
-        operators = [op for op in ['extract', 'extractall', 'getinfo', 'namelist', 'read', 'infolist'] \
+        operators = [op for op in ['open', 'extract', 'extractall', 'getinfo', 'namelist', 'read', 'infolist'] \
                      if op in kwargs.keys()] 
         try:
             assert operators in ([],[None]) or sum([1 for op in operators]) == 1
@@ -559,7 +561,7 @@ class File(object):
             else:
                 operator = operators[0] 
         members, path = None, None
-        if operator in ('extract', 'getinfo', 'read'):
+        if operator in ('open', 'extract', 'getinfo', 'read'):
             members = kwargs.pop(operator, None)
         elif operator == 'extractall':
             path = kwargs.pop('extractall', None)
@@ -570,12 +572,11 @@ class File(object):
                 raise IOError("No operation parsed")
         if operator.startswith('extract'):
             warnings.warn("\n! Data extracted from zip file will be physically stored on local disk !")
-        if not(members is None or isinstance(members,Sequence)):
+        if isinstance(members,string_types):
             members = [members,]
         with zipfile.ZipFile(file) as zf:
-            #if not zipfile.is_zipfile(zf): # does not work
-            #    raise IOError('file not recognised as zip file')    
             namelist, infolist = zf.namelist(), zf.infolist() 
+            _namelist = [osp.basename(n) for n in namelist]
             #if operator in  ('infolist','namelist'):
             #        return getattr(zf, operator)()
             if operator == 'namelist':
@@ -593,16 +594,16 @@ class File(object):
                         assert m in namelist
                     except:
                         try:
-                            _namelist = [osp.basename(n) for n in namelist]
                             assert m in _namelist
                         except:
                             warnings.warn("\n! File '%s' not found in source zip !" % m)
                             members.pop(i)
                         else:
-                            members[i] = _namelist.index(m)
+                            members[i] = namelist[_namelist.index(m)]
             # now: operator in ('extract', 'getinfo', 'read')
-            if members is  None:
+            if members in ([],None):
                 raise IOError("Impossible to retrieve member file(s) from zipped data")
             data = [getattr(zf, operator)(m) for m in members]
-            return data if data in ([],[None]) or len(data)>1 else data[0]
-            # raise IOError("Operation '%s' failed" % operator)
+        return (data, members) if data in ([],[None]) or len(data)>1 \
+            else (data[0], members)
+        # raise IOError("Operation '%s' failed" % operator)
