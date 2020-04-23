@@ -8,14 +8,24 @@
 
 .. _geojson: https://github.com/jazzband/geojson
 .. |geojson| replace:: `geojson <geojson_>`_
+.. _bs4: https://pypi.python.org/pypi/beautifulsoup4
+.. |bs4| replace:: `beautiful soup <bs4_>`_
+.. _chardet: https://pypi.org/project/chardet/
+.. |chardet| replace:: `chardet <chardet_>`_
+.. _xmltree: https://docs.python.org/3/library/xml.etree.elementtree.html
+.. |xmltree| replace:: `xml.tree <xmltree_>`_
 
 Module implementing miscenalleous Input/Output methods.
     
 **Dependencies**
 
-*require*:      :mod:`os`, :mod:`six`, :mod:`collections`, :mod:`numpy`, :mod:`pandas`
+*require*:      :mod:`os`, :mod:`six`, :mod:`collections`, :mod:`numpy`, :mod:`pandas`,
+                :mod:`time`, :mod:`requests`, :mod:`hashlib`, :mod:`shutil`
 
-*optional*:     :mod:`geojson`
+*optional*:     :mod:`simplejson`, :mod:`json`, :mod:`geojson`, :mod:`zipfile`, :mod:`bs4`,
+                :mod:`datetime`, :mod:`chardet`, :mod:`xml.etree`
+
+*call*:         :mod:`pyeudatnat.misc`         
 
 **Contents**
 """

@@ -8,11 +8,12 @@ Module implementing miscellaneous useful methods.
 
 **Dependencies**
 
-*require*:      :mod:`os`, :mod:`sys`
+*require*:      :mod:`os`, :mod:`six`, :mod:`collections`, :mod:`inspect`, :mod:`re`, 
+                :mod:`numpy`, :mod:`time`
 
-*optional*:     :mod:`A`
+*optional*:     :mod:`datetime`, :mod:`zipfile`
 
-*call*:         :mod:`A`         
+*call*:         :mod:`pyeudatnat`         
 
 **Contents**
 """

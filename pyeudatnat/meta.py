@@ -8,9 +8,7 @@ Module metadata template models.
     
 **Dependencies**
 
-*require*:      :mod:`os`, :mod:`six`, :mod:`collections`, :mod:`functools`, , :mod:`copy`
-
-*optional*:     :mod:`json`
+*require*:      :mod:`os`, :mod:`six`, :mod:`collections`, :mod:`functools`, :mod:`copy`
 
 *call*:         :mod:`pyeudatnat`, :mod:`pyeudatnat.io`         
 
