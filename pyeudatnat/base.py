@@ -41,19 +41,6 @@ from copy import deepcopy
 import numpy as np#analysis:ignore
 import pandas as pd
 
-try:                          
-    import simplejson as json
-except ImportError:
-    try:                          
-        import json
-    except ImportError:
-        class json:
-            def dump(arg):  
-                return '%s' % arg
-            def load(arg):  
-                with open(arg,'r') as f:
-                    return f.read()
-
 from pyeudatnat import PACKPATH, COUNTRIES
 from pyeudatnat.meta import MetaDat, MetaDatNat
 from pyeudatnat.io import Json, Dataframe
@@ -185,7 +172,7 @@ class BaseDatNat(object):
     @meta.setter#analysis:ignore
     def meta(self, meta):
         if not (meta is None or isinstance(meta, (MetaDatNat,Mapping))):         
-            raise TypeError("wrong format for country METAdata '%s' - must be a dictionary" % meta)
+            raise TypeError("Wrong format for country METAdata '%s' - must be a dictionary" % meta)
         self.__metadata = meta
 
     @property
@@ -194,7 +181,7 @@ class BaseDatNat(object):
     @config.setter#analysis:ignore
     def config(self, cfg):
         if not (cfg is None or isinstance(cfg, (MetaDat,Mapping))):         
-            raise TypeError("wrong format for CONFIGuration info '%s' - must be a dictionary" % cfg)
+            raise TypeError("Wrong format for CONFIGuration info '%s' - must be a dictionary" % cfg)
         self.__config = cfg
 
     @property
@@ -207,7 +194,7 @@ class BaseDatNat(object):
         #elif isinstance(cat, Mapping):
         #    cat = str(list(typ.values())[0])
         else:
-            raise TypeError("wrong format for CATEGORY '%s' - must be a string (or a dictionary)" % cat)
+            raise TypeError("Wrong format for CATEGORY '%s' - must be a string (or a dictionary)" % cat)
         self.__category = cat
 
     @property
@@ -217,11 +204,11 @@ class BaseDatNat(object):
     def cc(self, cc):
         if cc is None:                          pass
         elif not isinstance(cc, string_types):         
-            raise TypeError("wrong format for CC country code '%s' - must be a string" % cc)
+            raise TypeError("Wrong format for CC country code '%s' - must be a string" % cc)
         elif not cc in COUNTRIES: # COUNTRIES.keys()
-            raise IOError("wrong CC country code '%s' - must be any valid code from the EU area" % cc)   
+            raise IOError("Wrong CC country code '%s' - must be any valid code from the EU area" % cc)   
         elif cc != next(iter(self.COUNTRY)):
-            warnings.warn("\n! mismatch with class variable 'CC': %s !" % next(iter(self.COUNTRY)))
+            warnings.warn("\n! Mismatch with class variable 'CC': %s !" % next(iter(self.COUNTRY)))
         if _KEEP_META_UPDATED is True:
             self.meta.update({'country': {'code': cc, 'name': COUNTRIES[cc]}}) # isoCountry
         self.__cc = cc
@@ -236,7 +223,7 @@ class BaseDatNat(object):
     @lang.setter#analysis:ignore
     def lang(self, lang):
         if not (lang is None or isinstance(lang, string_types)):         
-            raise TypeError("wrong format for LANGuage type '%s' - must be a string" % lang)
+            raise TypeError("Wrong format for LANGuage type '%s' - must be a string" % lang)
         if _KEEP_META_UPDATED is True:
             self.meta.update({'lang': {'code': lang, 'name': LANGS[lang]}}) # isoLang
         self.__lang = lang
@@ -247,7 +234,7 @@ class BaseDatNat(object):
     @year.setter#analysis:ignore
     def year(self, year):
         if not (year is None or isinstance(year, int)):         
-            raise TypeError("wrong format for YEAR: '%s' - must be an integer" % year)
+            raise TypeError("Wrong format for YEAR: '%s' - must be an integer" % year)
         if _KEEP_META_UPDATED is True:
             self.meta.update({'year': year})
         self.__refdate = year
@@ -258,7 +245,7 @@ class BaseDatNat(object):
     @src.setter#analysis:ignore
     def src(self, src):
         if not (src is None or isinstance(src, string_types)):         
-            raise TypeError("wrong format for data SOURCE '%s' - must be a string" % src)
+            raise TypeError("Wrong format for data SOURCE '%s' - must be a string" % src)
         #elif src is not None:
         #    try:
         #        assert osp.exists(src) is True
@@ -283,7 +270,7 @@ class BaseDatNat(object):
     @file.setter#analysis:ignore
     def file(self, file):
         if not (file is None or isinstance(file, string_types)):         
-            raise TypeError("wrong format for source FILE '%s' - must be a string" % file)
+            raise TypeError("Wrong format for source FILE '%s' - must be a string" % file)
         if _KEEP_META_UPDATED is True:
             self.meta.update({'file': osp.basename(file), 'path': osp.dirname(file)})
         self.__file = file
@@ -297,18 +284,18 @@ class BaseDatNat(object):
         if cache is None:
             cache = {}
         elif not isinstance(cache, Mapping):
-            raise TypeError('wrong type for CACHE parameter - must be a dictionary')
+            raise TypeError("Wrong type for CACHE parameter - must be a dictionary")
         elif set(cache.keys()).difference({'caching','store','expire','force'}) != set():
-            raise IOError('keys for CACHE dictionary not recognised')
+            raise IOError("Keys for CACHE dictionary not recognised")
         if not(cache.get('caching') is None or isinstance(cache['caching'], (str,bool))):
-            raise TypeError('wrong type for CACHING flag')
+            raise TypeError("Wrong type for CACHING flag")
         elif not(cache.get('store') is None or isinstance(cache['store'], str)):
-            raise TypeError('wrong type for STORE parameter')
+            raise TypeError("Wrong type for STORE parameter")
         elif not(cache.get('expire') is None or     \
                  (isinstance(cache['expire'], (int, timedelta))) and int(cache['expire'])>=-1):
-            raise TypeError('wrong type for EXPIRE parameter')
+            raise TypeError("Wrong type for EXPIRE parameter")
         elif not(cache.get('force') is None or isinstance(cache['force'], bool)):
-            raise TypeError('wrong type for FORCE flag')
+            raise TypeError("Wrong type for FORCE flag")
         self.__cache = cache
 
     @property
@@ -317,7 +304,7 @@ class BaseDatNat(object):
     @proj.setter#analysis:ignore
     def proj(self, proj):
         if not (proj is None or isinstance(proj, string_types)):         
-            raise TypeError("wrong format for PROJection type '%s' - must be a string" % proj)
+            raise TypeError("Wrong format for PROJection type '%s' - must be a string" % proj)
         if _KEEP_META_UPDATED is True:
             self.meta.update({'proj': proj})
         self.__proj = proj
@@ -336,7 +323,7 @@ class BaseDatNat(object):
         elif isinstance(cols, Sequence) and all([isinstance(col, string_types) for col in cols]):
             cols = [{self.lang: col} for col in cols]
         elif not(isinstance(cols, Sequence) and all([isinstance(col, Mapping) for col in cols])): 
-            raise TypeError("wrong Input COLUMNS headers type '%s' - must be a sequence of dictionaries" % cols)
+            raise TypeError("Wrong Input COLUMNS headers type '%s' - must be a sequence of dictionaries" % cols)
         if _KEEP_META_UPDATED is True:
             self.meta.update({'columns': cols})
         self.__columns = cols
@@ -353,7 +340,7 @@ class BaseDatNat(object):
         elif isinstance(ind, Sequence):
             ind = dict.fromkeys(ind)
         elif not isinstance(ind, Mapping):
-            raise TypeError("wrong Output INDEX type '%s' - must be a dictionary" % ind)
+            raise TypeError("Wrong Output INDEX type '%s' - must be a dictionary" % ind)
         if _KEEP_META_UPDATED is True:
             self.meta.update({'index': ind})
         self.__index = ind
@@ -364,7 +351,7 @@ class BaseDatNat(object):
     @sep.setter#analysis:ignore
     def sep(self, sep):
         if not (sep is None or isinstance(sep, string_types)):         
-            raise TypeError("wrong format for SEParator '%s' - must be a string" % sep)
+            raise TypeError("Wrong format for SEParator '%s' - must be a string" % sep)
         if _KEEP_META_UPDATED is True:
             self.meta.update({'sep': sep})
         self.__sep = sep
@@ -375,7 +362,7 @@ class BaseDatNat(object):
     @enc.setter#analysis:ignore
     def enc(self, enc):
         if not (enc is None or isinstance(enc, string_types)):         
-            raise TypeError("wrong format for file ENCoding '%s' - must be a string" % enc)
+            raise TypeError("Wrong format for file ENCoding '%s' - must be a string" % enc)
         if _KEEP_META_UPDATED is True:
             self.meta.update({'enc': enc})
         self.__encoding = enc
@@ -390,7 +377,7 @@ class BaseDatNat(object):
         elif isinstance(place, string_types):
             pass # place = [place,]
         elif not(isinstance(place, Sequence) and all([isinstance(p, string_types) for p in place])):
-            raise TypeError("wrong input format for PLACE '%s' - must be a (list of) string(s) or a mapping dictionary" % place)            
+            raise TypeError("Wrong input format for PLACE '%s' - must be a (list of) string(s) or a mapping dictionary" % place)            
         self.__place = place
 
     #/************************************************************************/
@@ -402,11 +389,11 @@ class BaseDatNat(object):
         src = (src not in ((None,),()) and src[0]) or kwargs.pop('src', None) or self.src                                               
         file = kwargs.pop('file', None) or self.file                                               
         if src in (None,'') and file in (None,''):     
-             raise IOError("no source filename provided - set keyword file attribute/parameter")
+             raise IOError("No source filename provided - set keyword file attribute/parameter")
         elif not(src is None or isinstance(src, string_types)):     
              raise TypeError('wrong format for source data - must be a string')
         elif not(file is None or isinstance(file, string_types)):     
-             raise TypeError('wrong format for filename - must be a string')
+             raise TypeError("Wrong format for filename - must be a string")
         # ifmt = osp.splitext(src)[-1]
         encoding = kwargs.pop('enc', self.enc) # self.meta.get('enc')
         sep = kwargs.pop('sep', self.sep) # self.meta.get('sep')
@@ -440,7 +427,7 @@ class BaseDatNat(object):
         elif isinstance(columns, string_types):     
             columns = (columns,)
         elif not (isinstance(columns, Sequence) and all([isinstance(col, string_types) for col in columns])):   
-             raise TypeError("wrong input format for columns - must be a (list of) string(s)")
+             raise TypeError("Wrong input format for columns - must be a (list of) string(s)")
         try:
             langs = list(self.columns[0].keys())
         except:
@@ -463,12 +450,12 @@ class BaseDatNat(object):
         try:
             assert ilang is not None and ilang in LANGS
         except AssertionError:
-            raise IOError("input language '%s' not recognised" % ilang)            
+            raise IOError("Input language '%s' not recognised" % ilang)            
         olang = kwargs.pop('olang', self.config.get('lang')) 
         try:
             assert olang is not None and olang in LANGS
         except AssertionError:
-            raise IOError("output language '%s' not recognised" % olang)            
+            raise IOError("Output language '%s' not recognised" % olang)            
         try:
             assert ilang in langs or ilang == self.lang
         except AssertionError:
@@ -516,7 +503,7 @@ class BaseDatNat(object):
         if columns in (None, ()):
             columns = {}  # will actually set all columns in that case
         elif not isinstance(columns, Mapping):
-            raise TypeError("wrong input format for columns - must be a mapping dictionary")
+            raise TypeError("Wrong input format for columns - must be a mapping dictionary")
         force_rename = kwargs.pop('force', False)
         lang = kwargs.pop('lang', self.lang)
         idate = kwargs.pop('date', self.date)
@@ -574,12 +561,12 @@ class BaseDatNat(object):
             columns = [columns,]
         elif not(columns in (None, ())                                  or \
                  (isinstance(columns, Sequence) and all([isinstance(col,string_types) for col in columns]))):
-            raise TypeError("wrong input format for drop columns - must be a (list of) string(s)")
+            raise TypeError("Wrong input format for drop columns - must be a (list of) string(s)")
         keepcols = kwargs.pop('keep', [])                     
         if isinstance(keepcols, string_types):
             keepcols = [keepcols,]
         elif not(isinstance(keepcols, Sequence) and all([isinstance(col,string_types) for col in keepcols])):
-            raise TypeError("wrong input format for keep columns - must be a (list of) string(s)")
+            raise TypeError("Wrong input format for keep columns - must be a (list of) string(s)")
         force_keep = kwargs.pop('force', False)                     
         # lang = kwargs.pop('lang', None) # OLANG
         try:
@@ -698,7 +685,7 @@ class BaseDatNat(object):
         elif isinstance(latlon, Sequence):
             lat, lon = latlon
         elif not latlon in ([],None):
-            raise TypeError('wrong lat/lon fields - must be a single or a pair of string(s)')
+            raise TypeError("Wrong lat/lon fields - must be a single or a pair of string(s)")
         order = kwargs.pop('order', 'lL')
         place = kwargs.pop('place', self.place)
         # lang = kwargs.pop('lang', self.lang)
@@ -718,7 +705,7 @@ class BaseDatNat(object):
             if order == 'lL':           lat, lon = olat, olon
             elif order == 'Ll':         lat, lon = olon, olat
             else:
-                raise IOError("unknown order keyword - must be 'lL' or 'Ll'")
+                raise IOError("Unknown order keyword - must be 'lL' or 'Ll'")
             self.data[[lat, lon]] = self.data[latlon].str.split(pat=r'\s+', n=1, expand=True) #.astype(float)
             geo_qual = 1
         elif lat in self.data.columns and lon in self.data.columns: 
@@ -739,7 +726,7 @@ class BaseDatNat(object):
                 self.data[olat], self.data[olon] = zip(*self.data[self.place].apply(f))                                     
                 self.proj = None
             except ImportError:
-                raise IOError('no geocoder available')
+                raise IOError("No geocoder available")
             geo_qual = None # TBD
         try:    
             ind = INDEX['geo_qual']['name']
@@ -762,7 +749,7 @@ class BaseDatNat(object):
             except TypeError:
                 self.data[olat], self.data[olon] = zip(*self.data[[olat, olon]].apply(f))
             except ImportError:
-                raise IOError('no projection transformer available')
+                raise IOError("No projection transformer available")
         # cast
         # self.data[olat], self.data[olon] = pd.to_numeric(self.data[olat]), pd.to_numeric(self.data[olon])
         try:
@@ -793,10 +780,10 @@ class BaseDatNat(object):
         elif isinstance(_columns, Sequence):
             _columns = dict(zip(_columns,_columns))
         elif not isinstance(_columns, Mapping):
-            raise TypeError("wrong format for input index - must a mapping dictionary")
+            raise TypeError("Wrong format for input index - must a mapping dictionary")
         lang = kwargs.pop('lang', self.config.get('lang'))
         if not isinstance(lang, string_types):
-            raise TypeError("wrong format for language - must a string")
+            raise TypeError("Wrong format for language - must a string")
         try:
             columns = self.index.copy()
             columns.update(_columns) # index overwrites whatever is in oindex
@@ -814,7 +801,7 @@ class BaseDatNat(object):
             try:
                 columns = {col[lang]: col[self.lang] for col in self.columns}
             except:
-                raise IOError("nothing to match to the input columns - check the (empty) index")
+                raise IOError("Nothing to match to the input columns - check the (empty) index")
         # check for country- and redate-related columns - special cases
         for attr in ['country', 'cc', 'refdate']:
             if attr in columns:
@@ -838,7 +825,7 @@ class BaseDatNat(object):
             latlon = [columns.get(l, l) for l in ['lat', 'lon']]
             self.find_location(latlon = latlon)
         except:
-            warnings.warn('! location not assigned for data !')            
+            warnings.warn("\n! Location not assigned for data !")            
         finally:
             [columns.pop(l,None) for l in ['lat', 'lon']]
         ## update oindex with index (which has been modified by get_column and
@@ -876,12 +863,12 @@ class BaseDatNat(object):
         if fmt is None: # we give it a default value...
             fmt = 'json'
         elif not isinstance(fmt, string_types):
-            raise TypeError("wrong input format - must be a string key")
+            raise TypeError("Wrong input format - must be a string key")
         else:
             fmt = fmt.lower()
         FMT = self.config.get('fmt') or {}
         if not fmt in FMT:
-            raise IOError("wrong input format - must be any string among '%s'" % list(FMT.keys()))
+            raise IOError("Wrong input format - must be any string among '%s'" % list(FMT.keys()))
         elif fmt in ('csv','gpkg'):
             raise IOError("format '%s' not supported" % fmt)
         INDEX = self.config.get('index') or {}
@@ -891,17 +878,17 @@ class BaseDatNat(object):
             try:
                 results = Dataframe.to_geojson(self.data, columns = columns, latlon = latlon)
             except:
-                raise IOError("issue when creating GEOJSON geometries")
+                raise IOError("Issue when creating GEOJSON geometries")
         elif  fmt == 'json':
             try:
                 results = Dataframe.to_json(self.data, columns = columns)
             except:
-                raise IOError("issue when creating JSON attributes")
+                raise IOError("Issue when creating JSON attributes")
         try:
             assert kwargs.pop('as_str', False) is False
             return results
         except AssertionError:
-            return json.dumps(results, ensure_ascii=False)
+            return Json.dumps(results, ensure_ascii=False)
         except:     
             raise IOError("issue when dumping '%s' attributes" % fmt.upper())
             
@@ -919,7 +906,7 @@ class BaseDatNat(object):
         if fmt is None: # we give it a default value...
             fmt = 'csv'
         elif not isinstance(fmt, string_types):
-            raise TypeError("wrong input format - must be a string key")
+            raise TypeError("Wrong input format - must be a string key")
         else:
             fmt = fmt.lower()
         encoding = kwargs.pop('enc', self.config.get('enc'))
@@ -927,7 +914,7 @@ class BaseDatNat(object):
         date = kwargs.pop('date', self.config.get('date'))#analysis:ignore
         FMT = self.config.get('fmt') or {}
         if not fmt in FMT:
-            raise TypeError("wrong input format - must be any string among '%s'" % list(FMT.keys()))
+            raise TypeError("Wrong input format - must be any string among '%s'" % list(FMT.keys()))
         if dest in (None,''):
             dest = osp.abspath(osp.join(self.config.get('path'), fmt, self.config.get('file') % (self.cc, FMT.get(fmt))))
             warnings.warn("\n! Output data file '%s' will be created" % dest)
@@ -939,13 +926,13 @@ class BaseDatNat(object):
                 #columns = list(set(self.data.columns).intersection(set([ind['name'] for ind in INDEX.values()])))
                 assert columns not in (None,[])
             except:
-                raise IOError('geographic lat/lon columns not set')
+                raise IOError('Geographic lat/lon columns not set')
         if latlon in (None,[]): 
             try:
                 olat, olon = INDEX['lat']['name'], INDEX['lon']['name'] 
                 assert olat in columns and olon in columns
             except:
-                raise IOError('geographic lat/lon columns not set')
+                raise IOError('Geographic lat/lon columns not set')
         self.data.reindex(columns = columns)
         if fmt == 'csv':
             kwargs.update({'header': True, 'index': False, 
@@ -953,25 +940,25 @@ class BaseDatNat(object):
             try:
                 self.data.to_csv(dest, columns = columns, **kwargs) # date_format=date
             except:
-                raise IOError("issue when creating CSV file")
+                raise IOError("Issue when creating CSV file")
         elif fmt in ('json','geojson'):
             kwargs.update({'fmt': fmt, 'as_str':False, 'latlon': latlon})
             try:
                 results = self.dumps_data(columns = columns, **kwargs)
             except:
-                raise IOError("issue when creating %s geometries" % fmt.upper())
-            try:
-                with open(dest, 'w', encoding=encoding) as f:
-                    json.dump(results, f, ensure_ascii=False)
-            except:
-                raise IOError("impossible saving metadata file")
+                raise IOError("Issue when creating %s geometries" % fmt.upper())
+            with open(dest, 'w', encoding=encoding) as f:
+                try:
+                    Json.dump(results, f, ensure_ascii=False)
+                except:
+                    raise IOError("Impossible saving metadata file")
         elif fmt == 'gpkg':
             results = Dataframe.to_gpkg(self.data, columns = columns)#analysis:ignore
         return
     
     #/************************************************************************/
     def dumps_config(self, **kwargs):
-        warnings.warn("\n! method not implemented !")
+        warnings.warn("\n! Method not implemented !")
         return
     
     #/************************************************************************/
@@ -1014,9 +1001,12 @@ class BaseDatNat(object):
             assert kwargs.pop('as_str', False) is False
             return meta or self.meta.to_dict()
         except AssertionError:
-            return json.dumps(meta or self.meta.to_dict(), ensure_ascii=False)
-        except:     
-            raise IOError("impossible dumping metadata file")
+            try:
+                return Json.dumps(meta or self.meta.to_dict(), ensure_ascii=False)
+            except:
+                try:return Json.dumps(meta or self.meta.to_dict(), ensure_ascii=False, serialize=True)
+                except:     
+                    raise IOError("Impossible dumping metadata file")
 
     #/************************************************************************/
     def dump_meta(self, *dest, **kwargs):
@@ -1030,11 +1020,11 @@ class BaseDatNat(object):
         if fmt is None: 
             fmt = 'json'
         elif not isinstance(fmt, string_types):
-            raise TypeError("wrong input format - must be a string key")
+            raise TypeError("Wrong input format - must be a string key")
         else:
             fmt = fmt.lower()
         if fmt != 'json':
-            raise IOError("metadata output to a JSON format only")
+            raise IOError("Metadata output to a JSON format only")
         if dest is None:   
             try:
                 dest = osp.join(PACKPATH, self.type, '%s%s.json' % (self.cc, self.type))
@@ -1045,15 +1035,15 @@ class BaseDatNat(object):
             meta = self.update_meta()
         else:
             meta = None
-        try:
-            # self.meta.dump(dest)
-            with open(dest, 'w', encoding=self.enc) as f:
+        # self.meta.dump(dest)
+        with open(dest, 'w', encoding=self.enc) as f:
+            try:
+                Json.dump(meta or self.meta.to_dict(), f, ensure_ascii=False)
+            except:
                 try:
-                    Json.dump(meta or self.meta.to_dict(), f, ensure_ascii=False)
+                    Json.dump(meta or self.meta.to_dict(), f, ensure_ascii=False, serialize=True)
                 except:
-                    json.dump(meta or self.meta.to_dict(), f, ensure_ascii=False)
-        except:
-            raise IOError("impossible saving metadata file")
+                    raise IOError("Impossible saving metadata file")
           
 
 #%% 
@@ -1081,7 +1071,7 @@ def datnatFactory(*args, **kwargs):
     try:
         assert cfg is None or isinstance(cfg, (Mapping,MetaDat))  
     except AssertionError:
-        raise TypeError("config type '%s' not recognised - must be a dictionary or %s" % (type(cfg),MetaDat.__name__))
+        raise TypeError("Configuration type '%s' not recognised - must be a dictionary or %s" % (type(cfg),MetaDat.__name__))
     if cfg is None:
         config = {}
     #elif isinstance(cfg, string_types):
@@ -1100,13 +1090,13 @@ def datnatFactory(*args, **kwargs):
         try:
             config = cfg.copy()
         except:
-            raise IOError("config metadata '%s' not recognised" % str(cfg))
+            raise IOError("Configuration metadata '%s' not recognised" % str(cfg))
     elif isinstance(cfg, Mapping):
         config = MetaDat(cfg) 
         try:
             config = MetaDat(cfg)  
         except:
-            raise IOError("config dictionary '%s' not recognised" % cfg)
+            raise IOError("Configuration dictionary '%s' not recognised" % cfg)
     try:
         CATEGORY = config.category if hasattr(config, 'category') else config.get("category")
         assert CATEGORY is None or isinstance(CATEGORY,(Mapping,string_types))
@@ -1119,25 +1109,25 @@ def datnatFactory(*args, **kwargs):
     try:
         assert metadata is None or isinstance(metadata,(string_types,Mapping,MetaDatNat))
     except AssertionError:
-        raise TypeError("metadata type '%s' not recognised - must be a filename, dictionary or %s" % (type(metadata),MetaDatNat.__name__))
+        raise TypeError("Metadata type '%s' not recognised - must be a filename, dictionary or %s" % (type(metadata),MetaDatNat.__name__))
     if metadata is None:
         metadata = {}
     if isinstance(metadata,MetaDatNat):
         try:
             meta = metadata.copy()
         except:
-            raise IOError("metadata '%s' not recognised "  % metadata)
+            raise IOError("Metadata '%s' not recognised "  % metadata)
     elif isinstance(metadata, (string_types, Mapping)):
         try:
             meta = MetaDatNat(metadata)
         except:
-            raise IOError("metadata '%s' not recognised " % metadata)
+            raise IOError("Metadata '%s' not recognised " % metadata)
     # check country
     try:
         COUNTRY = meta.get('country') if 'country' in meta else kwargs.pop('country', None)
         assert COUNTRY is None or isinstance(COUNTRY,(Mapping,string_types))
     except AssertionError:
-        raise TypeError("country type '%s' not recognised - must be a string or a dictionary" % type(COUNTRY))
+        raise TypeError("Country type '%s' not recognised - must be a string or a dictionary" % type(COUNTRY))
     try:
         COUNTRY = isoCountry(COUNTRY)
     except:
@@ -1162,7 +1152,7 @@ def datnatFactory(*args, **kwargs):
     try:
         assert coder is None or isinstance(coder,string_types) or isinstance(coder,Mapping)
     except AssertionError:
-        raise TypeError("coder type '%s' not recognised - must be a dictionary or a single string" % type(coder))
+        raise TypeError("Coder type '%s' not recognised - must be a dictionary or a single string" % type(coder))
     if not coder in ({}, ''): # None accepted as default geocoder!
         geoserv = GeoService(coder)
     else: 

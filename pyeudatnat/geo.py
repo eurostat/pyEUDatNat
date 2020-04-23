@@ -37,22 +37,8 @@ import warnings#analysis:ignore
 from collections import OrderedDict, Mapping, Sequence#analysis:ignore
 from six import string_types
 
-
 import numpy as np#analysis:ignore
 import pandas as pd#analysis:ignore
-
-try:                          
-    import simplejson as json
-except ImportError:
-    try:                          
-        import json
-    except ImportError:
-        class json:
-            def dump(arg):  
-                return '%s' % arg
-            def load(arg):  
-                with open(arg,'r') as f:
-                    return f.read()
 
 try:
     assert False

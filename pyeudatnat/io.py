@@ -701,12 +701,6 @@ class Dataframe(object):
 
 class Json(object):
     
-    is_order_preserved = False # True
-    # note: when is_order_preserved is False, this entire class can actually be
-    # ignored since the dump/load methods are exactly equivalent to the original
-    # dump/load method of the json package
-    is_OrderedDict_use = True
-    
     @classmethod
     def serialize(cls, data):
         if data is None or isinstance(data, (type, bool, int, float, str)):
@@ -733,12 +727,31 @@ class Json(object):
     
     @classmethod
     def dump(cls, data, f, **kwargs):
-        try:        assert cls.is_OrderedDict_use is True and cls.is_order_preserved is True 
+        serialize = kwargs.pop('serialize', False)    
+        # note: when is_order_preserved is False, this entire class can actually be
+        # ignored since the dump/load methods are exactly equivalent to the original
+        # dump/load method of the json package
+        try:        assert serialize is True 
         except:     json.dump(data, f, **kwargs)
         else:       json.dump(cls.serialize(data), f, **kwargs)
     
     @classmethod
+    def dumps(cls, data, **kwargs):
+        serialize = kwargs.pop('serialize', False)    
+        try:        assert serialize is True 
+        except:     json.dumps(data, **kwargs)
+        else:       json.dumps(cls.serialize(data), **kwargs)
+    
+    @classmethod
     def load(cls, s, **kwargs):
-        try:        assert cls.is_OrderedDict_use is True and cls.is_order_preserved is True 
+        serialize = kwargs.pop('serialize', False)
+        try:        assert serialize is True 
         except:     return json.load(s, **kwargs)
         else:       return json.load(s, object_hook=cls.restore, **kwargs)
+
+    @classmethod
+    def loads(cls, s, **kwargs):
+        serialize = kwargs.pop('serialize', False)
+        try:        assert serialize is True 
+        except:     return json.loads(s, **kwargs)
+        else:       return json.loads(s, object_hook=cls.restore, **kwargs)

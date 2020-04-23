@@ -31,19 +31,6 @@ from six import string_types
 from functools import reduce
 from copy import deepcopy
 
-try:                          
-    import simplejson as json
-except ImportError:
-    try:                          
-        import json
-    except ImportError:
-        class json:
-            def dump(arg):  
-                return '%s' % arg
-            def load(arg):  
-                with open(arg,'r') as f:
-                    return f.read()
-
 from pyeudatnat import COUNTRIES, PACKPATH#analysis:ignore
 from pyeudatnat.io import File, Json#analysis:ignore
 
@@ -81,7 +68,7 @@ class MetaDat(dict):
                     meta = Json.load(fp)
                 except:
                     try:
-                        meta = json.load(fp)
+                        meta = Json.load(fp, serialize=True)
                     except:
                         raise IOError("Input metadata file '%s' must be in JSON format" % meta)
         elif not isinstance(meta, Mapping):
@@ -139,7 +126,7 @@ class MetaDat(dict):
         return r
      
     #/************************************************************************/
-    def load(self, src=None, **kwargs):
+    def load(self, src=None):
         if src is None:
             # raise IOError("no source metadata file defined")
             try:        cat = self.category.get('code') 
@@ -156,12 +143,17 @@ class MetaDat(dict):
                 meta = Json.load(fp)
             except:
                 try:
-                    meta = json.load(fp)
+                    meta = Json.load(fp, serialize=True)
                 except:
                     raise IOError("Error saving metadata file")
         if 'category' not in meta.keys() and self.category not in ('UNK',None):
             meta.update({'category': self.category})
         return meta
+     
+    #/************************************************************************/
+    def loads(self, src=''):
+        warnings.warn("\n! Method 'loads' not implemented")
+        pass
    
     #/************************************************************************/
     def update(self, arg, **kwargs):
@@ -189,18 +181,20 @@ class MetaDat(dict):
         super(MetaDat,self).update(meta)
     
     #/************************************************************************/
-    def dumps(self, **kwargs):
+    def dumps(self):
         meta = {k:v for (k,v) in dict(self.copy()).items() if k in self.keys()}
         if meta == {}:
             raise IOError("No metadata variable available")        
         try:
-            return json.dumps(meta, **kwargs)
+            return Json.dumps(meta)
         except:
-            raise IOError("Error dumping metadata file")
-
+            try:
+                Json.dumps(meta, serialize=True)
+            except:
+                raise IOError("Error dumping metadata file")
     
     #/************************************************************************/
-    def dump(self, dest=None, **kwargs):
+    def dump(self, dest=None):
         if dest is None:
             # raise IOError("no destination metadata file defined")
             try:        cat = self.category.get('code') 
@@ -219,10 +213,10 @@ class MetaDat(dict):
             raise IOError("No metadata variable available")        
         with open(dest, 'w') as fp:
             try:
-                Json.dump(meta, fp, **kwargs)
+                Json.dump(meta, fp)
             except:
                 try:
-                    json.dump(meta, fp, **kwargs)
+                    Json.dump(meta, fp, serialize=True)
                 except:
                     raise IOError("Error saving metadata file")
 
