@@ -65,12 +65,9 @@ class MetaDat(dict):
                 raise IOError("Input metadata filename '%s' not recognised" % meta)
             with open(meta, 'rt') as fp:
                 try:
-                    meta = Json.load(fp)
+                    meta = Json.load(fp, serialize=kwargs.pop('serialize',False))
                 except:
-                    try:
-                        meta = Json.load(fp, serialize=True)
-                    except:
-                        raise IOError("Input metadata file '%s' must be in JSON format" % meta)
+                    raise IOError("Input metadata file '%s' must be in JSON format" % meta)
         elif not isinstance(meta, Mapping):
             raise TypeError("Input metadata format '%s' not recognised - must be a mapping dictionary or a string" % type(meta))
         meta.update(kwargs)
@@ -126,7 +123,7 @@ class MetaDat(dict):
         return r
      
     #/************************************************************************/
-    def load(self, src=None):
+    def load(self, src=None, **kwargs):
         if src is None:
             # raise IOError("no source metadata file defined")
             try:        cat = self.category.get('code') 
@@ -140,12 +137,9 @@ class MetaDat(dict):
             raise IOError("Metadata file '%s' do not exist" % src)
         with open(src, 'r') as fp:
             try:
-                meta = Json.load(fp)
+                meta = Json.load(fp, **kwargs)
             except:
-                try:
-                    meta = Json.load(fp, serialize=True)
-                except:
-                    raise IOError("Error saving metadata file")
+                raise IOError("Error saving metadata file")
         if 'category' not in meta.keys() and self.category not in ('UNK',None):
             meta.update({'category': self.category})
         return meta
@@ -181,20 +175,17 @@ class MetaDat(dict):
         super(MetaDat,self).update(meta)
     
     #/************************************************************************/
-    def dumps(self):
+    def dumps(self, **kwargs):
         meta = {k:v for (k,v) in dict(self.copy()).items() if k in self.keys()}
         if meta == {}:
             raise IOError("No metadata variable available")        
         try:
-            return Json.dumps(meta)
+            return Json.dumps(meta, **kwargs)
         except:
-            try:
-                Json.dumps(meta, serialize=True)
-            except:
-                raise IOError("Error dumping metadata file")
+            raise IOError("Error dumping metadata file")
     
     #/************************************************************************/
-    def dump(self, dest=None):
+    def dump(self, dest=None, **kwargs):
         if dest is None:
             # raise IOError("no destination metadata file defined")
             try:        cat = self.category.get('code') 
@@ -213,12 +204,9 @@ class MetaDat(dict):
             raise IOError("No metadata variable available")        
         with open(dest, 'w') as fp:
             try:
-                Json.dump(meta, fp)
+                Json.dump(meta, fp, **kwargs)
             except:
-                try:
-                    Json.dump(meta, fp, serialize=True)
-                except:
-                    raise IOError("Error saving metadata file")
+                raise IOError("Error saving metadata file")
 
 #%%
 #==============================================================================
