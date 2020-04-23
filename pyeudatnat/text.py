@@ -141,7 +141,7 @@ def isoLang(arg):
             lang = {'code': DEFLANG, 'name': LANGS[DEFLANG]} # not implemented
         except:     language, locale = None, None
         else:
-            language, locale = lang.get('code',None), lang.get('name',None)
+            locale, language = lang.get('code',None), lang.get('name',None)
     elif locale in ('', None): # and NOT language in ('', None)
         try:
             locale = dict(map(reversed, LANGS.items())).get(language)
