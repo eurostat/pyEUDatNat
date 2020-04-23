@@ -201,37 +201,37 @@ class Requests(object):
 
     #/************************************************************************/
     @staticmethod
-    def read_response(response, fmt=None):
-        if 'fmt' is None:
+    def read_response(response, stream=None):
+        if stream is None:
             try:
                 url = response.url
             except:
-                fmt = 'json'
+                stream = 'json'
             else:
-                fmt = 'zip' if any([url.endswith(z) for z in ('zip','gzip','gz')]) else 'json'
-        if fmt in ('resp','response'):
+                stream = 'zip' if any([url.endswith(z) for z in ('zip','gzip','gz')]) else 'json'
+        if stream in ('resp','response'):
             return response
         try:
-            assert fmt is None or isinstance(fmt,string_types)
+            assert isinstance(stream,string_types)
         except:
-            raise TypeError("Wrong format for FMT parameter") 
+            raise TypeError("Wrong format for STREAM parameter") 
         else:
-            fmt = fmt.lower()
+            stream = stream.lower()
         try:
-            assert fmt in ['jsontext', 'jsonbytes', 'resp', 'zip', 'raw', 'content', 
-                           'text', 'stringio', 'bytes', 'bytesio', 'json']
+            assert stream in ['jsontext', 'jsonbytes', 'resp', 'zip', 'raw', 'content', 
+                              'text', 'stringio', 'bytes', 'bytesio', 'json']
         except:
-            raise IOError("Wrong value for FMT parameter") 
+            raise IOError("Wrong value for STREAM parameter") 
         else:
-            if fmt == 'content':
-                fmt = 'bytes'
-        if fmt.startswith('json'):
+            if stream == 'content':
+                stream = 'bytes'
+        if stream.startswith('json'):
             try:
-                assert fmt not in ('jsontext', 'jsonbytes')
+                assert stream not in ('jsontext', 'jsonbytes')
                 data = response.json()
             except:
                 try:
-                    assert fmt != 'jsonbytes'
+                    assert stream != 'jsonbytes'
                     data = response.text
                 except:
                     try:
@@ -239,42 +239,42 @@ class Requests(object):
                     except:
                         raise IOError("Error JSON-encoding of response")
                     else:
-                        fmt = 'jsonbytes' # force
+                        stream = 'jsonbytes' # force
                 else:
-                    fmt = 'jsontext' # force
+                    stream = 'jsontext' # force
             else:
                 return data
-        elif fmt == 'raw':
+        elif stream == 'raw':
             try:
                 data = response.raw
             except:
                 raise IOError("Error accessing ''raw'' attribute of response")
-        elif fmt in ('text', 'stringio'):
+        elif stream in ('text', 'stringio'):
             try:
                 data = response.text
             except:
                 raise IOError("Error accessing ''text'' attribute of response")
-        elif fmt in ('bytes', 'bytesio', 'zip'):
+        elif stream in ('bytes', 'bytesio', 'zip'):
             try:
                 data = response.content 
             except:
                 raise IOError("Error accessing ''content'' attribute of response")
-        if fmt == 'stringio':
+        if stream == 'stringio':
             try:
                 data = io.StringIO(data)
             except:
                 raise IOError("Error loading StringIO data")
-        elif fmt in ('bytesio', 'zip'):
+        elif stream in ('bytesio', 'zip'):
             try:
                 data = io.BytesIO(data)
             except:
                 raise IOError("Error loading BytesIO data")
-        elif fmt == 'jsontext':
+        elif stream == 'jsontext':
             try:
                 data = json.loads(data)
             except:
                 raise IOError("Error JSON-encoding of str text")
-        elif fmt == 'jsonbytes':                
+        elif stream == 'jsonbytes':                
                 try:
                     data = json.loads(data.decode())
                 except:
@@ -288,23 +288,21 @@ class Requests(object):
     #/************************************************************************/
     @staticmethod
     def read_url(urlname, **kwargs):
-        fmt = kwargs.pop('fmt', None) 
-        force_download = kwargs.pop('force_download', True) 
+        stream = kwargs.pop('stream', None) 
         caching = kwargs.pop('caching', False)
-        cache_store = kwargs.pop('cache_store', None)
-        expire_after = kwargs.pop('expire_after', 0)
+        force, store, expire = kwargs.pop('force', True), kwargs.pop('store', None), kwargs.pop('expire', 0)
         try:
             assert any([urlname.startswith(p) for p in ['http', 'https', 'ftp']]) is True
         except:
             #raise IOError ?
             warnings.warn("\n! Protocol not encoded in URL !")
         try:
-            response = Requests.get_response(urlname, fmt=fmt)
+            response = Requests.get_response(urlname, caching=caching, force=force, 
+                                             store=store, expire=expire)
         except:
             raise IOError("Wrong request for data from URL '%s'" % urlname) 
         try:
-            data = Requests.read_response(response, caching=caching, force_download=force_download, 
-                                          cache_store=cache_store, expire_after=expire_after)
+            data = Requests.read_response(response, stream=stream)
         except:
             raise IOError("Impossible reading data from URL '%s'" % urlname) 
         return data 
@@ -454,7 +452,7 @@ class Dataframe(object):
             raise IOError("Data format not recognised: '%s'" % fmt)
         try:
             assert 'csv' in fmt
-            nkwargs = Miscellaneous.clean_kwargs(kwargs, pd.to_csv)
+            nkwargs = Miscellaneous.inspect_kwargs(kwargs, pd.to_csv)
             df.to_csv(dest, **nkwargs)
         except AssertionError:
             pass
@@ -465,7 +463,7 @@ class Dataframe(object):
             else:               fmt.remove('csv')
         try:
             assert fmt is None or fmt in ('xls','xlsx')
-            nkwargs = Miscellaneous.clean_kwargs(kwargs, pd.to_excel)
+            nkwargs = Miscellaneous.inspect_kwargs(kwargs, pd.to_excel)
             df.to_excel(dest, **nkwargs)
         except AssertionError:
             pass
@@ -579,29 +577,29 @@ class Dataframe(object):
             fmt.insert(fmt.index('xlsx'),'xls') or fmt.remove('xlsx')
         except: pass
         fmt = [f for i, f in enumerate(fmt) if f not in fmt[:i]]# unique, ordered
-        def load_csv(s, **kw):
-            nkw = Miscellaneous.clean_kwargs(kw, pd.read_csv)
+        def read_csv(s, **kw):
+            nkw = Miscellaneous.inspect_kwargs(kw, pd.read_csv)
             return pd.read_csv(s, **nkw)
-        def load_excel(s, **kw):
-            nkw = Miscellaneous.clean_kwargs(kw, pd.read_excel)
+        def read_excel(s, **kw):
+            nkw = Miscellaneous.inspect_kwargs(kw, pd.read_excel)
             return pd.read_excel(s, **nkw)
-        def load_json(s, **kw):
-            nkw = Miscellaneous.clean_kwargs(kw, pd.read_json)
+        def read_json(s, **kw):
+            nkw = Miscellaneous.inspect_kwargs(kw, pd.read_json)
             return pd.read_json(s, **nkw)
-        def load_html(s, **kw):
-            nkw = Miscellaneous.clean_kwargs(kw, pd.read_html)
+        def read_html(s, **kw):
+            nkw = Miscellaneous.inspect_kwargs(kw, pd.read_html)
             return pd.read_html(s, **nkw)
-        def load_xml(s, **kw):
+        def from_xml(s, **kw):
             return Dataframe.from_xml(s, **kw)
-        def load_table(s, **kw):
-            nkw = Miscellaneous.clean_kwargs(kw, pd.read_table)
+        def read_table(s, **kw):
+            nkw = Miscellaneous.inspect_kwargs(kw, pd.read_table)
             return pd.read_table(s, **nkw)
-        funloads = {'csv':      load_csv, 
-                    'xls':      load_excel, 
-                    'json':     load_json, 
-                    'html':     load_html, 
-                    'xml':      load_xml, 
-                    'table':    load_table}
+        funloads = {'csv':      read_csv, 
+                    'xls':      read_excel, 
+                    'json':     read_json, 
+                    'html':     read_html, 
+                    'xml':      from_xml, 
+                    'table':    read_table}
         for f in fmt:
             try:
                 df = funloads[f](src, **kwargs)
@@ -630,22 +628,58 @@ class Dataframe(object):
     
     #/************************************************************************/
     @staticmethod
-    def from_zip(zipsrc, **kwargs):
+    def from_zip(file, members, **kwargs):
         """
         """
         try:
-            assert zipfile.is_zipfile(zipsrc)
+            assert zipfile.is_zipfile(file)
         except:
-            raise TypeError("Zip file '%s' not recognised" % zipsrc)
-        kwargs.update({'read': kwargs.pop('file', None)})
+            raise TypeError("Zip file '%s' not recognised" % file)
+        #kwargs.update({'read': kwargs.pop('file', None)})
+        #try:
+        #    data = File.unzip(file, **kwargs) # when None, and single file, read it
+        #except:
+        #    raise IOError("Impossible unzipping data from zipped file '%s'" % file) 
+        #try:
+        #    return Dataframe.from_data(data, **kwargs)
+        #except:
+        #    raise IOError("Wrong formatting of zipped data into dataframe") 
         try:
-            data = File.unzip(zipsrc, **kwargs) # when None, and single file, read it
+            assert members is None or isinstance(members,string_types) \
+                or (isinstance(members,Sequence) and all([isinstance(m,string_types) for m in members]))
         except:
-            raise IOError("Impossible unzipping data from zipped file '%s'" % zipsrc) 
-        try:
-            return Dataframe.from_data(data, **kwargs)
-        except:
-            raise IOError("Wrong formatting of zipped data into dataframe") 
+            raise TypeError("Wrong member '%s' not recognised" % members)
+        else:
+            if isinstance(members,string_types):
+                members = [members,]
+        results = {}
+        with zipfile.ZipFile(file) as zf:
+            namelist = zf.namelist() 
+            _namelist = [osp.basename(n) for n in namelist]
+            if members is None and len(namelist)==1:
+                members = namelist
+            elif members is not None:
+                for i in reversed(range(len(members))):
+                    m = members[i]
+                    try:
+                        assert m in namelist
+                    except:
+                        try:    assert m in _namelist
+                        except: members.pop(i)
+                        else:   members[i] = namelist[_namelist.index(m)]
+                    else:
+                        pass
+            if members in ([],None):
+                raise IOError("Impossible to retrieve member file(s) from zipped data")
+            for m in members:
+                try:
+                    with zf.open(m) as zm:
+                        df = Dataframe.from_data(zm, **kwargs)
+                except:
+                    raise IOError("Data %s cannot be read in source file... abort!" % m)
+                else:
+                    results.update({m: df})
+        return results if len(results.keys())>1 else list(results.values())[0]
     
     #/************************************************************************/
     @staticmethod
@@ -674,20 +708,36 @@ class Dataframe(object):
                 raise IOError("Data source '%s' not found on disk" % src)  
             else:
                 data = src
-        if zipfile.is_zipfile(data) or any([src.endswith(p) for p in ['zip', 'gz', 'gzip'] ]):
+        ## option 1: transforming files in zipped source directly into dataframe 
+        ## while unziping with from_zip
+        #if zipfile.is_zipfile(data) or any([src.endswith(p) for p in ['zip', 'gz', 'gzip', 'bz2'] ]):
+        #    try:
+        #        return Dataframe.from_zip(data, file, **kwargs)
+        #    except:
+        #        raise IOError("Impossible unzipping data from zipped file '%s'" % src)   
+        #else:
+        #    try:    fmt = os.path.splitext(file)[-1].replace('.','')
+        #    except: pass
+        #    else:   kwargs.update({'fmt':fmt, 'all_fmt': False})
+        #    try:
+        #        return Dataframe.from_data(data, **kwargs)
+        #    except:
+        #        raise IOError("Wrong formatting of source data into dataframe")             
+        # option 2: opening and parsing files from zipped source to transform
+        # them into dataframes 
+        if zipfile.is_zipfile(data) or any([src.endswith(p) for p in ['zip', 'gz', 'gzip', 'bz2'] ]):
             try:
-                kwargs.update({'read': file}) # when file=None, will read a single file
-                src = File.unzip(data, namelist=True) 
-                data = File.unzip(data, **kwargs) 
+                # file = File.unzip(data, namelist=True) 
+                kwargs.update({'open': file}) # when file=None, will read a single file
+                data, file = File.unzip(data, **kwargs) 
             except:
                 raise IOError("Impossible unzipping data from zipped file '%s'" % src)   
         try:
-            fmt = os.path.splitext(src)[-1].replace('.','')
+            fmt = os.path.splitext(file)[-1].replace('.','')
         except:
             pass
         else:
-            kwargs.update({'fmt':fmt, 'all_fmt': True})
-        return Dataframe.from_data(data, **kwargs)
+            kwargs.update({'fmt':fmt, 'all_fmt': False})
         try:
             return Dataframe.from_data(data, **kwargs)
         except:
@@ -731,27 +781,31 @@ class Json(object):
         # note: when is_order_preserved is False, this entire class can actually be
         # ignored since the dump/load methods are exactly equivalent to the original
         # dump/load method of the json package
+        nkwargs = Miscellaneous.inspect_kwargs(kwargs, json.dump)
         try:        assert serialize is True 
-        except:     json.dump(data, f, **kwargs)
-        else:       json.dump(cls.serialize(data), f, **kwargs)
+        except:     json.dump(data, f, **nkwargs)
+        else:       json.dump(cls.serialize(data), f, **nkwargs)
     
     @classmethod
     def dumps(cls, data, **kwargs):
         serialize = kwargs.pop('serialize', False)    
+        nkwargs = Miscellaneous.inspect_kwargs(kwargs, json.dumps)
         try:        assert serialize is True 
-        except:     json.dumps(data, **kwargs)
-        else:       json.dumps(cls.serialize(data), **kwargs)
+        except:     return json.dumps(data, **nkwargs)
+        else:       return json.dumps(cls.serialize(data), **nkwargs)
     
     @classmethod
     def load(cls, s, **kwargs):
         serialize = kwargs.pop('serialize', False)
+        nkwargs = Miscellaneous.inspect_kwargs(kwargs, json.load)
         try:        assert serialize is True 
-        except:     return json.load(s, **kwargs)
-        else:       return json.load(s, object_hook=cls.restore, **kwargs)
+        except:     return json.load(s, **nkwargs)
+        else:       return json.load(s, object_hook=cls.restore, **nkwargs)
 
     @classmethod
     def loads(cls, s, **kwargs):
         serialize = kwargs.pop('serialize', False)
+        nkwargs = Miscellaneous.inspect_kwargs(kwargs, json.loads)
         try:        assert serialize is True 
         except:     return json.loads(s, **kwargs)
-        else:       return json.loads(s, object_hook=cls.restore, **kwargs)
+        else:       return json.loads(s, object_hook=cls.restore, **nkwargs)
