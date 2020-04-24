@@ -751,14 +751,14 @@ class Datetime(object):
         Example
         -------
         >>> since = datetime.datetime.now()
-        >>> print since 
+        >>> print(since) 
             2014-08-18 19:30:40.970000
         >>> until = since + datetime.timedelta(10) # 10 days
         >>> until # this is a datetime
             datetime.datetime(2014, 8, 28, 19, 30, 40, 970000)
-        >>> print until # which displays microseconds
+        >>> print(until) # which displays microseconds
             2014-08-28 19:30:40.970000
-        >>> print until - since
+        >>> print(until - since)
             10 days, 0:00:00
         >>> Datetime.span(since=since, until=until)
             datetime.timedelta(10)
@@ -771,7 +771,7 @@ class Datetime(object):
         >>> until_iso = Datetime.datetime(until, fmt='iso')
         >>> until_iso
             '2014-08-28T19:30:40'
-        >>> print until_iso # microseconds have been dumped...
+        >>> print(until_iso) # microseconds have been dumped...
             2014-08-28T19:30:40
         >>> Datetime.span(since=since, until=until_iso)
             datetime.timedelta(10) # 10 days as set
@@ -827,16 +827,16 @@ class Datetime(object):
         Example
         -------
         >>> since = datetime.datetime.now() # this is: datetime.datetime(2014, 8, 19, 16, 27, 41, 629000)
-        >>> print since
+        >>> print(since)
             2014-08-19 16:27:41.629000        
         >>> span = '1d'
         >>> until = since + datetime.timedelta(1)
-        >>> print until
+        >>> print(until)
             2014-08-20 16:27:41.629000
         >>> print Datetime.since(until=until, span=span)
             {{'second': 41, 'hour': 16, 'year': 2014, 'day': 20, 'minute': 27, 'month': 8}}
         >>> since_c = Datetime.since(until=until, span=span, fmt='datetime')
-        >>> print since_c # this is: datetime.datetime(2014, 8, 19, 16, 23, 27)
+        >>> print(since_c) # this is: datetime.datetime(2014, 8, 19, 16, 23, 27)
             2014-08-20 16:27:41
         >>> since_c == since
             False
@@ -854,7 +854,7 @@ class Datetime(object):
         Other results are as expected, independently of the format of the input arguments:
         
         >>> until_iso = Datetime.datetime(until, fmt='iso')
-        >>> print until_iso
+        >>> print(until_iso)
             2014-08-20T16:27:41
         >>> Datetime.since(until=until_iso, span=span, fmt=dict)
             {{'second': 41, 'hour': 16, 'year': 2014, 'day': 19, 'minute': 27, 'month': 8}}
@@ -898,13 +898,13 @@ class Datetime(object):
         Example
         -------
         >>> since = datetime.datetime.now() # this is: datetime.datetime(2014, 8, 19, 16, 45, 5, 94000)
-        >>> print since
+        >>> print(since)
             2014-08-19 16:45:05.094000        
         >>> span = datetime.timedelta(2) # 2 days
-        >>> print span
+        >>> print(span)
             2 days, 0:00:00
         >>> until = Datetime.until(since=since, span=span, fmt='iso')
-        >>> print until
+        >>> print(until)
             '2014-08-21T16:45:05'   
         >>> Datetime.since(until=until, span=span, fmt='datetime')
             datetime.datetime(2014, 8, 19, 16, 45, 5)           
@@ -921,6 +921,130 @@ class Datetime(object):
             return until
         else:
             return cls.datetime(until, **kwargs) 
+
+    #/************************************************************************/
+    @classmethod
+    def gt(cls, time1, time2):
+        """Compare two date/time instances: check that the first entered time instance 
+        is posterior (after) to the second one.
+        
+            >>> resp = Datetime.gt(time1, time2)
+            
+        Arguments
+        ---------        
+        time1,time2 : datetime.datetime, str, float, dict       
+            time instances whose format are any accepted by :meth:`Datetime.datetime`\ . 
+            
+        Returns
+        -------
+        resp : bool
+            :literal:`True` if `time1`>`time2`, i.e. `time1` represents a time
+            posterior to `time2`; :literal:`False` otherwise. 
+
+        Example
+        -------
+        >>> dt = datetime.datetime(2014, 6, 19, 17, 58, 5)
+        >>> one_day = {{'y':2014, 'm':6, 'd':19, 'hr':17, 'mn':58,  'sec':5}}
+        >>> the_day_after = one_day.copy()
+        >>> the_day_after.update({{'d': the_day_after['d']+1}})
+        >>> Datetime.gt(the_day_after, one_day)
+            True
+            
+        See also
+        -------- 
+        :meth:`~Datetime.lt`, :meth:`~Datetime.gte`
+        """
+        t1 = Datetime.datetime(time1, fmt='datetime')
+        t2 = Datetime.datetime(time2, fmt='datetime')
+        if t1.tzinfo is None:    t1 = t1.replace(tzinfo=cls.__DEF_TIMEZ)
+        if t2.tzinfo is None:    t2 = t2.replace(tzinfo=cls.__DEF_TIMEZ)
+        try:    return t1 - t2 > cls.ZERO
+        except: raise IOError("Unrecognised time operation")
+
+    #/************************************************************************/
+    @classmethod
+    def lt(cls, time1, time2):
+        """Compare two date/time instances: check that the first entered time instance 
+        is prior (before) to the second one.
+        
+            >>> resp = Datetime.lt(time1, time2)
+            
+        Arguments
+        ---------        
+        time1,time2 : datetime.datetime, str, float, dict       
+            see :meth:`~Datetime.gt`\ .
+            
+        Returns
+        -------
+        resp : bool
+            :literal:`True` if `time1`<`time2`, i.e. `time1` represents a time
+            prior to `time2`; :literal:`False` otherwise. 
+            
+        Example
+        -------
+        Following :meth:`~Datetime.gt` example:
+        
+        >>> Datetime.lt(one_day,the_day_after)
+            True
+        >>> one_day_iso = Datetime.datetime(one_day, **{{'{KW_FORMAT_DATETIME}': '{KW_ISOFORMAT}'}})
+        >>> one_day_iso
+            '2014-06-19T17:58:05'
+        >>> Datetime.lt(one_day_iso,the_day_after)
+            True
+            
+        See also
+        -------- 
+        :meth:`~Datetime.gt`, :meth:`~Datetime.lte`
+        """
+        return cls.gt(time2, time1)
+
+    #/************************************************************************/
+    @classmethod
+    def gte(cls, time1, time2):
+        """Compare two date/time instances: check that the first entered time instance 
+        is posterior to  or simultaneous with the second one the second one.
+        
+            >>> resp = Datetime.gte(time1, time2)
+        
+        Example
+        -------
+        .. Following :meth:`~Datetime.lt` and :meth:`~Datetime.gt` examples:
+        
+        >>> Datetime.gte(one_day_iso,one_day) and not Datetime.gt(one_day_iso,one_day)
+            True
+            
+        See also
+        -------- 
+        :meth:`~Datetime.gt`, :meth:`~Datetime.lte`
+        """
+        # return cls.greater(time1, time2) or time1==time2
+        t1 = Datetime.datetime(time1, fmt='datetime')
+        t2 = Datetime.datetime(time2, fmt='datetime')
+        if not t1.tzinfo:    t1 = t1.replace(tzinfo=cls.__DEF_TIMEZ)
+        if not t2.tzinfo:    t2 = t2.replace(tzinfo=cls.__DEF_TIMEZ)
+        try:    return t1 - t2 >= cls.ZERO
+        except: raise IOError("Unrecognised time operation")
+
+    #/************************************************************************/
+    @classmethod
+    def lte(cls, time1, time2):
+        """Compare two date/time instances: check that the first entered time instance 
+        is prior to or simultaneous with the second one. 
+        
+            >>> resp = Datetime.lte(time1, time2)
+        
+        Example
+        -------
+        .. Following :meth:`~Datetime.lt` :meth:`~Datetime.gt` examples:
+        
+        >>> Datetime.lte(one_day_iso,one_day) and not Datetime.lt(one_day_iso,one_day)
+            True
+            
+        See also
+        -------- 
+        :meth:`~Datetime.lt`, :meth:`~Datetime.gte`
+        """
+        return cls.gte(time2, time1)
 
     #/************************************************************************/
     @staticmethod
