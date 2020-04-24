@@ -1048,10 +1048,10 @@ class Datetime(object):
 
     #/************************************************************************/
     @staticmethod
-    def datetime_format(**kwargs):
+    def dtformat(**kwargs):
         """Determine a datetime format from date and time formats, and their combination. 
         
-            >>> dt = datetime_format(**kwargs)
+            >>> dt = dtformat(**kwargs)
             
         Keyword Arguments
         -----------------
@@ -1094,7 +1094,7 @@ class Datetime(object):
             timestamp estimated as the datetime representation of `now` (i.e. at the
             time the method is called).
         """
-        return Datetime.NOW().strftime(Datetime.datetime_format(**kwargs))
+        return Datetime.NOW().strftime(Datetime.dtformat(**kwargs))
 
  
 #%%
@@ -1267,11 +1267,11 @@ class File(object):
             fileinfo['filepath'] = filepath
             fileinfo['size'] = filestat.st_size
             fileinfo['datemodified'] = \
-                time.strftime(Datetime.datetime_format(**kwargs), time.localtime(filestat.st_mtime))
+                time.strftime(Datetime.dtformat(**kwargs), time.localtime(filestat.st_mtime))
             fileinfo['datecreated'] = \
-                time.strftime(Datetime.datetime_format(**kwargs), time.localtime(filestat.st_ctime))
+                time.strftime(Datetime.dtformat(**kwargs), time.localtime(filestat.st_ctime))
             fileinfo['dateaccessed'] = \
-                time.strftime(Datetime.datetime_format(**kwargs), time.localtime(filestat.st_atime))
+                time.strftime(Datetime.dtformat(**kwargs), time.localtime(filestat.st_atime))
             fileinfo['uuid'] = File.uuid(filepath)
             #if sys.platform[0:3].lower()=='win':
             if ISWIN:       ownerid, ownername = _winFileOwner(filepath)
