@@ -1189,6 +1189,5 @@ def datnatFactory(*args, **kwargs):
         name = '%s%s' % (CC.upper(), CATEGORY.lower())
     except:
         name = 'New%s' % basecls.__name__.replace('Base','')
-    coder = kwargs.pop('coder', None)
     return type(name, (basecls,), attributes)
  
