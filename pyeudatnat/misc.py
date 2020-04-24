@@ -604,7 +604,6 @@ class File(object):
             # now: operator in ('extract', 'getinfo', 'read')
             if members in ([],None):
                 raise IOError("Impossible to retrieve member file(s) from zipped data")
-            data = [getattr(zf, operator)(m) for m in members]
-        return (data, members) if data in ([],[None]) or len(data)>1 \
-            else (data[0], members)
+            results = {m: getattr(zf, operator)(m) for m in members}
+        return results
         # raise IOError("Operation '%s' failed" % operator)

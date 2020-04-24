@@ -734,24 +734,27 @@ class Dataframe(object):
         #    except:
         #        raise IOError("Wrong formatting of source data into dataframe")             
         # option 2: opening and parsing files from zipped source to transform
-        # them into dataframes 
+        # them into dataframes - 
         if zipfile.is_zipfile(data) or any([src.endswith(p) for p in ['zip', 'gz', 'gzip', 'bz2'] ]):
             try:
                 # file = File.unzip(data, namelist=True) 
                 kwargs.update({'open': file}) # when file=None, will read a single file
-                data, file = File.unzip(data, **kwargs) 
+                unzipped = File.unzip(data, **kwargs) 
             except:
                 raise IOError("Impossible unzipping data from zipped file '%s'" % src)   
-        try:
-            fmt = os.path.splitext(file)[-1].replace('.','')
-        except:
-            pass
-        else:
-            kwargs.update({'fmt':fmt, 'all_fmt': False})
-        try:
-            return Dataframe.from_data(data, **kwargs)
-        except:
-            raise IOError("Wrong formatting of source data into dataframe") 
+        results = {}
+        for file, data in unzipped.items():
+            try:
+                fmt = os.path.splitext(file)[-1].replace('.','')
+            except:
+                pass
+            else:
+                kwargs.update({'fmt':fmt, 'all_fmt': False})
+            try:
+                results.update({file: Dataframe.from_data(data, **kwargs)})
+            except:
+                raise IOError("Wrong formatting of source data into dataframe") 
+        return results if len(results.keys())>1 else list(results.values())[0]
         
 
 #%%
