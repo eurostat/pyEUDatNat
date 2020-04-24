@@ -9,9 +9,9 @@ Module implementing miscellaneous useful methods.
 **Dependencies**
 
 *require*:      :mod:`os`, :mod:`six`, :mod:`collections`, :mod:`inspect`, :mod:`re`, 
-                :mod:`numpy`, :mod:`time`
+                :mod:`numpy`, :mod:`datetime`, :mod:`time`, :mod:`operator`
 
-*optional*:     :mod:`datetime`, :mod:`zipfile`
+*optional*:     :mod:`dateutil`, :mod:`zipfile`
 
 *call*:         :mod:`pyeudatnat`         
 
@@ -28,14 +28,27 @@ import inspect
 import re
 import warnings#analysis:ignore
 
+import operator
 from collections import OrderedDict, Mapping, Sequence#analysis:ignore
 from six import string_types
 
 import time
-try: 
-    from datetime import datetime
-except ImportError:            
-    pass 
+import datetime 
+import calendar
+try:    
+    import dateutil
+except ImportError:
+    _is_dateutil_installed = False
+    try:
+        import pytz  
+        # warnings.warn('pytz help: https://pypi.python.org/pypi/pytz')   
+    except: pass
+else:
+    _is_dateutil_installed = True
+    # warnings.warn('dateutil help: https://pypi.python.org/pypi/python-dateutil')   
+    try:    assert dateutil.parser # issue with IPython
+    except: 
+        import dateutil.parser 
 
 import numpy as np
 
@@ -156,8 +169,8 @@ class Type(object):
                   np.dtype('int'):              int, 
                   np.dtype('f'):                float, 
                   np.dtype(float):              float,
-                  np.dtype('datetime64'):       datetime,
-                  np.dtype('datetime64[ns]'):   datetime
+                  np.dtype('datetime64'):       datetime.datetime,
+                  np.dtype('datetime64[ns]'):   datetime.datetime
                  } 
 
     # Numpy -> Python types conversion
@@ -176,7 +189,7 @@ class Type(object):
     #             str:        [np.dtype('O'), object], 
     #             int:        [np.dtype('i'), np.dtype('uint32'), np.dtype('int')],
     #             float:      [np.dtype('f'), np.dtype(float)],
-    #             datetime:   [np.dtype('datetime64'), np.dtype('datetime64[ns]')],
+    #             datetime.datetime:   [np.dtype('datetime64'), np.dtype('datetime64[ns]')],
     #             } 
         
     # Python -> Numpy types conversion
@@ -198,8 +211,577 @@ class Type(object):
 #==============================================================================
     
 class Datetime(object):
-    """Static methods for datetime objects manipulation.
+    """Static and class methods for datetime objects manipulation.
     """
+
+    try:        
+        UTC_TZ  = dateutil.tz.tzutc()
+    except:
+        try:    UTC_TZ  = pytz.timezone('UTC')
+        except: UTC_TZ  = None
+    
+    try:    LOCAL_TZ    = dateutil.tz.tzlocal()
+    except: LOCAL_TZ    = None #  pytz.localize()
+    
+    DICT_TIMEZ          = {'local': LOCAL_TZ, 'utc': UTC_TZ} 
+    __DEF_TIMEZ           = DICT_TIMEZ['local'] # 'utc'
+    
+    ZERO                = datetime.timedelta(0)
+    HOUR                = datetime.timedelta(hours=1)
+    __DICT_DURATION       = {'zero': ZERO, 'hour': HOUR}
+    
+    TODAY               = datetime.date.today # lambda: datetime.date.fromtimestamp(time.time()) 
+    NOW                 = datetime.datetime.now
+    UTCNOW              = datetime.datetime.utcnow
+    TOMORROW            = lambda: Datetime.TODAY() + datetime.timedelta(1)
+    IN24HOURS           = lambda: Datetime.NOW() + datetime.timedelta(1)
+    # those are functions
+    __DICT_NOW            = {'now': NOW, 'utcnow': UTCNOW, 'today': TODAY, 
+                             'tomorrow': TOMORROW, 'in24hours': IN24HOURS} 
+
+    __YR_TO     = {'sec':31556940,   'mn':525949,    'hr':8765.81, 'd':365.242,  'm':12,               'y':1 }   
+    __MTH_TO    = {'sec':2629739.52, 'mn':43828.992, 'hr':730.484, 'd':30.4368,  'm':1,                'y':1./12}
+    __DAY_TO    = {'sec':86400,      'mn':1440,      'hr':24,      'd':1,        'm':1./__MTH_TO['d'],   'y':1./__YR_TO['d']}
+    __HR_TO     = {'sec':3600,       'mn':60,        'hr':1,       'd':1./24,    'm':1./__MTH_TO['hr'],  'y':1./__YR_TO['hr']}
+    __MN_TO     = {'sec':60,         'mn':1,         'hr':1./60,   'd':1./1440,  'm':1./__MTH_TO['mn'],  'y':1./__YR_TO['mn']}
+    __SEC_TO    = {'sec':1,          'mn':1./60,     'hr':1./3600, 'd':1./86400, 'm':1./__MTH_TO['sec'], 'y':1./__YR_TO['sec']}
+
+    UNITS_TO =  {'y': __YR_TO, 'm': __MTH_TO, 'd': __DAY_TO, 
+                 'hr': __HR_TO, 'mn': __MN_TO, 'sec': __SEC_TO}
+    
+    TIMING_UNITS = ['y', 'm', 'd', 'hr', 'mn', 'sec'] # list(__YR_TO.keys())
+
+    DATETIME_KWARGS = { 'y':'year', 'm' :'month', 'd':'day',
+                        'hr':'hour', 'mn':'minute', 'sec':'second'}
+    __DATETIME_KWARGS_REV = {v:k for (k,v) in DATETIME_KWARGS.items()}
+    __DATETIME_ITEMS = list(DATETIME_KWARGS.keys()) + list(DATETIME_KWARGS.values()) 
+    
+    TIMEDELTA_KWARGS = { 'y':'years', 'm' :'months', 'd':'days',
+                         'hr':'hours', 'mn':'minutes', 'sec':'seconds'}
+    __TIMEDELTA_KWARGS_REV = {v:k for (k,v) in TIMEDELTA_KWARGS.items()}
+    __TIMEDELTA_ITEMS = list(TIMEDELTA_KWARGS.keys()) + list(TIMEDELTA_KWARGS.values()) 
+
+    @classmethod
+    def units_to(cls, from_, to, time=1.):       
+        """Perform simple timing units conversion.
+        
+            >>> t = Datetime.units_to(from, to, time=1.)
+            
+        Arguments
+        ---------        
+        from,to : str
+            'origin' and 'final' units: any strings in :literal:`['y', 'm', 'd', 'hr', 'mn', 'sec']` .
+        time : float
+            timing value to convert.
+
+        Examples
+        --------
+        >>> Datetime.units_to('mn', 'hr',  time=60) == 1
+            True
+        >>> Datetime.units_to('sec', 'd',  10) == 10*Datetime.UNITS_TO['sec']['d']
+            True
+        >>> Datetime.units_to('hr', 'sec',  5) == 5*Datetime.UNITS_TO['hr']['sec']
+            True
+        """
+        if not(from_ in cls.__TIMEDELTA_ITEMS and to in cls.__TIMEDELTA_ITEMS):
+            raise TypeError('Timing units not implemented')            
+        else:
+            if from_ in cls.TIMEDELTA_KWARGS.values():
+                from_ = cls.__TIMEDELTA_KWARGS_REV[from_]
+            if to in cls.TIMEDELTA_KWARGS.values():
+                to = cls.__TIMEDELTA_KWARGS_REV[to]
+        return cls.UNITS_TO[from_][to] * time
+        
+    @classmethod
+    def convert_time_units(cls, to='mn', **kwargs):
+        """Convert composed timing units to a single one.
+            
+            >>> t = Datetime.convert_time_units(to, **kwargs)
+            
+        Arguments
+        ---------        
+        to : str
+            desired 'final' unit: any string in :literal:`['y', 'm', 'd', 'hr', 'mn', 'sec'] `; 
+            default to :literal:`'mn' `.
+            
+        Keyword Arguments
+        -----------------        
+        kwargs : dict
+            dictionary of composed times indexed by their unit, which can be any
+            string in :literal:`['y', 'm', 'd', 'hr', 'mn', 'sec'] `.
+
+        Note
+        ----
+        Quantities to convert are passed either as a dictionary or as positional
+        arguments:        
+        
+        Example
+        -------
+        >>> Datetime.convert_time_units('mn', **{{'hr':1, 'sec':420}}) == 67
+            True
+        >>> Datetime.convert_time_units('mn', hr=1,  sec=420) == 67
+            True
+        """
+        if not to in cls.__TIMEDELTA_ITEMS:
+            raise IOError("Timing unit '%s' not implemented" % to)
+        elif to in cls.TIMEDELTA_KWARGS.values():
+            to = cls.__DATETIME_KWARGS_REV[to]
+        t = 0
+        for u in cls.__TIMEDELTA_ITEMS:
+            if u in kwargs: t += cls.units_to(u, to, kwargs.get(u))
+        return t
+                                              
+    @classmethod
+    def datetime(cls, *arg, **kwargs):  # datetime = arg
+        """Perform time conversions in between various (not so) standard timing 
+        formats: unix timestamp, isoformat, ctime, ...
+            
+            >>> dt = Datetime.datetime(*dtime, **kwargs)
+            
+        Arguments
+        ---------        
+        dtime : datetime.datetime, str, float, dict
+            an object specifying a time, e.g. it can be:    
+            
+            - a :class:`datetime.datetime` object: :literal:`datetime.datetime(2014, 6, 19, 17, 58, 5)`,
+            - an iso-formated (ISO 8601) date: :literal:`"2014-06-19T17:58:05"` or 
+              :literal:`"2014-06-19 17:58:05"`,
+            - a string date: :literal:`"Thu Jun 19 17:58:05 2014"`,
+            - a float representing a unix timestamp date: :literal:`1403193485`,
+            - an explicit string date: :literal:`"45d 34hr 2900mn 4m 500sec 2y"` 
+              (where order does not matter),
+            - a dictionary-like date: :literal:`{{'y':2, 'm':4, 'd':45, 'hr':34, 'mn':2900, 'sec':500}}`.               
+                
+            When the date is expressed as an 'explicit string' or a dictionary, a time unit
+            is any string in :literal:`['y', 'm', 'd', 'hr', 'mn', 'sec'] `.
+            
+            'now', 'utcnow' and 'today' are also accepted instead of an explicit date.
+            
+        Keyword Arguments
+        -----------------   
+        fmt : str
+            variable specifying the desired output timing format: it can be any string
+            among:            
+            
+            - 'datetime' to output a :class:`datetime.datetime` object,
+            - 'dict' to output a dictionary indexed by the timing units, where a key   
+              is any string in :literal:`['y', 'm', 'd', 'hr', 'mn', 'sec'] ` 
+              (see also :meth:`datetime.timetuple` method)),
+            - 'timestamp' to output a unix timestamp (see also :meth:`calendar.timegm` 
+              method)),
+            - 'iso' to output an iso-formated string date (see also
+              :meth:`datetime.isoformat` method),
+            - 'calendar' to output a calendar (ISO year, week number, and weekday) date 
+              (see also :meth:`datetime.isocalendar` method),
+            
+            as well as: 
+            
+            - a date formating string (e.g. :literal:`'%Y-%m-%dT%H:%M:%S'`, see :meth:`datetime.strftime`),
+            - :literal:`True` to force a string naming (see :meth:`time.ctime` method)).
+            
+            When nothing is passed, a default output format is considered, depending 
+            on the input format of `dtime` (e.g. a :class:`datetime` object is output for a
+            :class:`dict` `dtime`, ...).
+        no_micro_secs : bool
+            set to :literal:`False` to display microseconds as part of the output datetime when the
+            chosen output format is the isoformat; default: :literal:`True`.
+            
+        Return
+        ------
+        dt : datetime.datetime, str, float, dict, calendar (tuple)
+            a well-formatted (according to `fmt` specification) object 
+            representing a datetime equivalent to the input `dtime`.
+
+        Note
+        ----
+        As for the :class:`dict` format of the input :literal:`dtime`, long time unit names (keys in 
+        :literal:`['years', 'months', 'days', 'hours', 'minutes', 'seconds']`) are also accepted.
+        
+        As for the `timestamp` format, a default timezone is automatically attached 
+        to the datetime.
+            
+        Example
+        -------
+        >>> import datetime
+        
+        Let's construct some datetime objects:        
+        
+        >>> dt = datetime.datetime(2014, 6, 19, 17, 58, 5)
+        >>> dt_dict = {{'y':2014, 'm':6, 'd':19, 'hr':17, 'mn':58,  'sec':5}}
+
+        Again, we can use dictionary of positional arguments to pass the proper format:
+
+        >>> dt == Datetime.datetime(dt_dict, **{{'fmt':'datetime'}})        
+            True
+        >>> dt == Datetime.datetime("Thu Jun 19 17:58:05 2014", fmt='datetime')
+            True
+
+        By default, it behaves 'well' in many circumstances:
+         
+        >>> dt == Datetime.datetime(dt_dict)
+            True
+        >>> Datetime.datetime(dt_dict) == Datetime.datetime(**dt_dict)
+            True
+        
+        However:
+        
+        >>> Datetime.datetime(dt, fmt='dict')
+            {{'second': 5, 'hour': 17, 'year': 2014, 'day': 19, 'minute': 58, 'month': 6}}
+            
+        Many more conversions are possible though:
+        
+        >>> Datetime.datetime(dt, **{{'fmt':''%Y-%m-%dT%H:%M:%S''}})
+            '2014-06-19T17:58:05'
+        >>> Datetime.datetime(dt_dict, **{{'fmt':''%Y-%m-%dT%H:%M:%S''}})
+            '2014-06-19T17:58:05'
+        >>> Datetime.datetime(dt_dict, **{{'fmt':'%Y-%m-%d %H:%M:%S+00'}})
+            '2014-06-19 17:58:05+00'
+        >>> Datetime.datetime(dt, fmt='%Y-%m-%d %H:%M:%S')
+            '2014-06-19 17:58:05'  
+        >>> Datetime.datetime(dt_dict, fmt='%Y-%m-%d')
+            '2014-06-19'
+        >>> Datetime.datetime(dt, **{{'fmt':True}}) # use ctime()
+            "Thu Jun 19 17:58:05 2014"
+        >>> Datetime.datetime(dt_dict, fmt='calendar')
+            (2014, 25, 4)
+        >>> Datetime.datetime(dt_dict, fmt='iso')
+            '2014-06-19T17:58:05' 
+        >>> Datetime.datetime(dt, **{{'fmt':'iso'}})
+            '2014-06-19T17:58:05' 
+        >>> Datetime.datetime("Thu Jun 19 17:58:05 2014")
+            {{'second': 5, 'hour': 17, 'year': 2014, 'day': 19, 'minute': 58, 'month': 6}}
+            
+        Mind the UTC:
+        
+        >>> import dateutil
+        >>> utc_tz = dateutil.tz.tzutc() # note: same as timing.UTC_TZ
+        >>> dt_utc = dt.replace(tzinfo=utc_tz)
+        >>> Datetime.datetime(dt_utc, **{{'fmt': 'timestamp'}})
+            1403200685 
+        
+        As desired, the operation is idempotent (when the right parameters are passed!):        
+        
+        >>> f_dt = Datetime.datetime(dt, fmt='%Y-%m-%d %H:%M:%S')
+        >>> dt == Datetime.datetime(f_dt, **{{'fmt': 'datetime'}})
+            True
+        >>> f_dt_utc = Datetime.datetime(dt_utc, fmt='timestamp')
+        >>> dt_utc == Datetime.datetime(f_dt_utc, fmt='datetime')
+            True
+        
+        As for the `no_micro_secs` keyword argument, it is useful to avoid some
+        'unpleasant' notation:
+        
+        >>> dt = datetime.datetime.now()
+        >>> dt
+            datetime.datetime(2014, 8, 18, 14, 56, 17, 821000)
+        >>> print dt
+            2014-08-18 14:56:17.821000
+        >>> Datetime.datetime(dt, fmt='iso')
+            '2014-08-18T14:56:17'
+        >>> Datetime.datetime(dt, fmt='iso', no_micro_secs=False)
+            '2014-08-18T14:56:17.821000'  
+            
+        Though it does not affect most representations:
+        
+        >>> Datetime.datetime(dt, fmt=True, no_micro_secs=False)
+        'Mon Aug 18 14:56:17 2014'
+        """
+        no_micro_second = kwargs.pop('no_micro_secs',True)
+        dtime, unix, isoformat, dict_, isocal = False, False, False, False, False
+        fmt = kwargs.pop('fmt',False)
+        if arg in ((),None):            arg = kwargs 
+        else:                           arg = arg[0]
+        if arg is None:    
+            return None
+        elif isinstance(arg,string_types) and arg in cls.__DICT_NOW.keys():
+            arg = cls.__DICT_NOW[arg]()
+            if fmt is False:    dtime = True
+        elif isinstance(arg, (int,float)):
+            try:    arg = datetime.datetime.fromtimestamp(arg, cls.__DEF_TIMEZ) # we put a tz
+            except: raise IOError("Timestamp %s not recognised" % arg) 
+        elif not isinstance(arg, (string_types,Mapping,datetime.datetime)):
+            raise TypeError("Wrong input date time format") 
+        if fmt=='datetime':             fmt, dtime = None, True
+        elif fmt=='timestamp':          fmt, unix = None, True
+        elif fmt=='iso':                fmt, isoformat = None, True
+        elif fmt=='dict':               fmt, dict_ = None, True
+        elif fmt=='calendar':           fmt, isocal = None, True
+        elif fmt=='default':            fmt = '%Y-%m-%dT%H:%M:%S' #ISO 8601 same as the one returned by datetime.datetime.isoformat 
+        elif not isinstance(fmt,(bool,string_types)):  
+            raise TypeError("Wrong timing format")
+        # special case: already an instance datetime.datetime
+        # proceed...
+        d_datetime, _datetime = {}, None
+        if isinstance(arg,datetime.datetime):
+            _datetime, arg = arg, arg.ctime()
+        # update the possible output formats       
+        if isinstance(arg,(string_types,datetime.datetime)) and not (fmt or isoformat or isocal or dict_ or unix):
+            dict_ = True
+        if isinstance(arg,string_types):
+            try:
+                if _datetime is None:   _datetime = dateutil.parser.parse(arg)
+                [d_datetime.update({unit: getattr(_datetime,unit)}) for unit in cls.DATETIME_KWARGS.values()]
+            except:
+                for unit in cls.__DATETIME_ITEMS:
+                    pattern = r'(.*)\d*\.*\d*\s*' + unit + r'(\d|\s|$)+(.*)' # raw string pattern
+                    x = re.search(pattern,arg)                
+                    if x is None:       continue
+                    elif unit in cls.DATETIME_KWARGS.keys():
+                        unit = cls.DATETIME_KWARGS[unit]
+                    if d_datetime.get(unit) is None:    d_datetime[unit] = 0
+                    d_datetime[unit] += eval(re.match('.*?([.0-9]+\s*)$',x.group(1)).group(1))
+        elif isinstance(arg,Mapping):
+            for unit in cls.__DATETIME_ITEMS:
+                if unit not in arg:         continue
+                else:                       t = arg.get(unit)
+                if unit in cls.DATETIME_KWARGS.keys():
+                    unit = cls.DATETIME_KWARGS[unit]
+                if d_datetime.get(unit) is None:    d_datetime[unit] = 0
+                d_datetime[unit] += t
+        try:                assert _datetime
+        except:             _datetime = datetime.datetime(**d_datetime)
+        try:                _datetime = _datetime.replace(microsecond=0) if no_micro_second else _datetime
+        except:             pass
+        if not(fmt or dtime or isoformat or isocal or dict_ or unix):
+            dtime = True
+        if isoformat:            
+            try:    return _datetime.isoformat()
+            except: raise IOError("Isoformat not implemented") 
+        elif isocal:
+            try:    return _datetime.isocalendar()
+            except: raise IOError("Isocalendar format not implemented") 
+        elif fmt:
+            if not any([re.search(s,fmt) for s in ('%Y','%m','%d','%H','%M','%S')]):
+                raise IOError("String format is not a standard datetime format")
+            try:    return _datetime.ctime() if fmt is True else _datetime.strftime(fmt) 
+            except: raise IOError("Format not implemented") 
+        elif unix:
+            if _datetime.tzinfo is None:
+                # _datetime is most likely a naive datetime; we assume it is in fact 
+                # a default ('local' or 'utc', depending on __DEF_TIMEZ variable) time            
+                _datetime = _datetime.replace(tzinfo=cls.__DEF_TIMEZ)
+            try:    
+                _datetime = _datetime.astimezone(tz=cls.DICT_TIMEZ['utc'])
+            except: pass
+             # calendar.timegm() assumes it's in UTC
+            try:    return calendar.timegm(_datetime.timetuple())
+            except: raise IOError("Unix format not implemented") 
+            # instead, time.mktime() assumes that the passed tuple is in local time
+            # return time.mktime(_datetime.timetuple())
+        elif dtime:      
+            return _datetime
+        elif dict_:
+            return d_datetime
+                                              
+    @classmethod
+    def timedelta(cls, *span, **kwargs): 
+        """Perform some duration calculations and conversions.
+            
+            >>> dt = Datetime.timedelta(*span, **kwargs)
+            >>> 
+                        
+        Arguments
+        ---------        
+        span : datetime.timedelta, str, float, dict
+            an object specifying a duration, e.g. it can be any form likewise:                
+            
+            - a :class:`datetime.timedelta` object: 
+              :literal:`datetime.timedelta(2014, 6, 19, 17, 58, 5)`,
+            - an explicit duration string: 
+              :literal:`'2900mn 45d 500sec 34hr 4m 2y'`,
+              (where order does not matter),
+            - an equivalent dictionary-like date: 
+              :literal:`{{'{years}':2, '{months}':4, '{days}':45, '{hours}':34, '{minutes}':2900, '{seconds}':500}}`.               
+                
+            When the date is expressed as an 'explicit string' or a dictionary, a time duration 
+            unit can be any string in :literal:`['years', 'months', 'days', 'hours', 'minutes', 'seconds']` .
+            
+            'zero' and 'hour' are also accepted  instead of an explicit duration, and used 
+            to represent both null and 1-hour durations.
+               
+        Keyword Arguments
+        -----------------   
+        fmt : str
+            variable specifying the desired output duration format: it can be any string
+            among:            
+            
+            - 'timedelta' to output a :class:`datetime` object,
+            - 'dict' to output a dictionary indexed by the timing units, where a key   
+              is any string in :literal:`['years', 'months', 'days', 'hours', 'minutes', 'seconds']`,
+            - 'str' to output an explicit duration string (not used).
+            
+        timing : str
+            if instead, some conversions is expected, this is used to pass the desired
+            output format: it can be any string in :literal:`['y', 'm', 'd', 'hr', 'mn', 'sec']` .
+
+        Example
+        -------
+        >>> import datetime
+        >>> Datetime.timedelta('hour')
+            '3600.0sec'
+        
+        Let's construct some timedelta objects that are equivalent:
+        
+        >>> td = datetime.timedelta(900, 57738, 80000)
+        >>> td_str = '45d 34hr 2900mn 4m 500sec 2y'
+        >>> td_dict = {{'y':2, 'm':4, 'd':45, 'hr': 34, 'mn': 2900, 'sec': 500}}
+
+        as to check the consistency:
+        
+        >>> Datetime.timedelta(td_str, fmt='dict') == td_dict
+            True
+        >>> td == Datetime.timedelta(td_str, **{{'fmt': 'timedelta'}}),
+            True
+        >>> Datetime.timedelta(td_str, dict=True)
+            {{'d': 45, 'hr': 34, 'mn': 2900, 'm': 4, 'sec': 500, 'y': 2}}
+        >>> Datetime.timedelta(td_dict) == Datetime.timedelta(td_dict_bis)
+            True
+        >>> Datetime.timedelta(td_str) == Datetime.timedelta('4m 34hr 500sec 2y 2900mn 45d ')
+            True
+        >>> Datetime.timedelta(td_str, **{{'timing': True}}) == td_dict
+            True
+        >>> Datetime.timedelta(td_dict, timing=True) == td_str
+        
+        Note that these one work too:
+        
+        >>> Datetime.timedelta(**td_dict) == td_str
+            True
+        >>> Datetime.convert_time_units('d', **td_dict) > td.days
+            True
+        """
+        timing = kwargs.pop('timing',None)
+        tdelta, str_, dict_ = False, False, False
+        fmt = kwargs.pop('fmt',False)
+        if fmt=='timedelta':            fmt, tdelta = None, True
+        elif fmt=='dict':               fmt, dict_ = None, True
+        elif fmt=='str':                fmt, str_ = None, True#analysis:ignore
+        elif not isinstance(fmt,bool):  
+            raise   TypeError("Wrong timing format")
+        if span in ((),None):           span = kwargs 
+        else:                           span = span[0]
+        if span is None:    
+            return None
+        elif isinstance(span, string_types) and span in cls.__DICT_DURATION.keys():
+            span = cls.__DICT_DURATION[span]
+        elif not isinstance(span, (string_types, Mapping,datetime.timedelta)):
+            raise TypeError("Wrong input timing format") 
+        # special case: already an instance datetime.timedelta
+        if isinstance(span,datetime.timedelta):
+            span = {'sec': span.total_seconds()}
+        # by default, when no argument is passed, none of the timing/tdelta arguments
+        # is passed, we assume  that the return type is not the input one
+        dict_ = dict_ or isinstance(span,str)
+        # proceed...
+        d_span = {}
+        if isinstance(span, string_types):
+            for unit in cls.__TIMEDELTA_ITEMS:
+                pattern = r'(.*)\d*\.*\d*\s*' + unit + r'(\d|\s|$)+(.*)' # raw string pattern
+                x = re.search(pattern,span)                
+                if x is None:       continue
+                elif unit in cls.TIMEDELTA_KWARGS.values():
+                    unit = cls.__TIMEDELTA_KWARGS_REV[unit]
+                if d_span.get(unit) is None:    d_span[unit] = 0
+                d_span[unit] += eval(re.match('.*?([.0-9]+\s*)$',x.group(1)).group(1))
+        elif isinstance(span, Mapping):
+            for unit in cls.__TIMEDELTA_ITEMS:
+                if unit not in span:    continue
+                else:                       val_span = span.get(unit)
+                if unit in cls.TIMEDELTA_KWARGS.values():
+                    unit = cls.__TIMEDELTA_KWARGS_REV[unit]
+                if d_span.get(unit) is None:    d_span[unit] = 0
+                d_span[unit] += val_span
+            span = ' '.join([str(v)+k for (k,v) in d_span.items()]) 
+        timing = timing if not tdelta else 'mn'
+        if timing in cls.TIMING_UNITS:      
+            # convert into one single unit
+            span = cls.convert_time_units(timing, **d_span)
+            if tdelta:      
+                return datetime.timedelta(**{'minutes': span})
+            else:           
+                return span               
+        elif dict_:
+            return d_span
+        else: #if str_:
+            return span
+
+        
+    @classmethod
+    def span(cls, **kwargs):
+        """Calculate the timing span (duration) in between two given beginning 
+        and ending date(time)s.
+        
+            >>> d = Datetime.span(**kwargs)
+            
+        Keyword Arguments
+        -----------------        
+        since,until : datetime.datetime, str, float, dict   
+            beginning and ending (respectively) time instances whose formats are any 
+            of those accepted by :meth:`Datetime.datetime` (not necessarly identical
+            for both instances).         
+        fmt : str
+            additional parameter for formatting the output result: see :meth:`~Datetime.timedelta`;
+            default is a :class`datetime.datetime` format.
+            
+        Returns
+        -------
+        d : datetime.timedelta, str, float, dict   
+            duration between the `since` and `until timing
+            instances, expressed in any the format passed in `fmt`
+            and accepted by :meth:`Datetime.timedelta`\ .
+        
+        Example
+        -------
+        >>> since = datetime.datetime.now()
+        >>> print since 
+            2014-08-18 19:30:40.970000
+        >>> until = since + datetime.timedelta(10) # 10 days
+        >>> until # this is a datetime
+            datetime.datetime(2014, 8, 28, 19, 30, 40, 970000)
+        >>> print until # which displays microseconds
+            2014-08-28 19:30:40.970000
+        >>> print until - since
+            10 days, 0:00:00
+        >>> Datetime.span(since=since, until=until)
+            datetime.timedelta(10)
+        >>> Datetime.span(since=since, until=until, fmt='str')
+            '864000.0sec'
+
+        The fact that microseconds are not taken into account ensures the consistency
+        of the results when converting in between different formats:             
+        
+        >>> until_iso = Datetime.datetime(until, **{{'fmt':'iso'}})
+        >>> until_iso
+            '2014-08-28T19:30:40'
+        >>> print until_iso # microseconds have been dumped...
+            2014-08-28T19:30:40
+        >>> Datetime.span(since=since, until=until_iso)
+            datetime.timedelta(10) # 10 days as set
+            
+        However, if we were precisely taking into account the microseconds:
+        
+        >>> Datetime.span(since=since, until=until_iso, no_micro_secs=False)
+            datetime.timedelta(9, 86399, 30000)
+
+        while this obviously does not affect the precise calculation:
+        
+        >>> Datetime.span(since=since, until=until, no_micro_secs=False)
+            datetime.timedelta(10)
+        """
+        since, until = kwargs.pop('since',None), kwargs.pop('until',None)       
+        if not(since and until):
+            raise IOError("Missing arguments")          
+        no_micro_second = kwargs.pop('no_micro_secs',True)
+        kw = {'fmt': 'datetime', 'no_micro_secs': no_micro_second}
+        since, until = cls.datetime(since, **kw), cls.datetime(until, **kw)
+        if operator.xor(until.tzinfo is None, since.tzinfo is None):
+            if until.tzinfo is None:    until = until.replace(tzinfo=cls.__DEF_TIMEZ)
+            else:                       since = since.replace(tzinfo=cls.__DEF_TIMEZ)
+        span = until - since
+        if not kwargs.get('fmt') or kwargs.get('fmt')=='datetime':   
+            return span
+        else:
+            return cls.timedelta(span, **kwargs) 
+
 
     #/************************************************************************/
     @staticmethod
@@ -249,8 +831,8 @@ class Datetime(object):
             timestamp estimated as the datetime representation of `now` (i.e. at the
             time the method is called).
         """
-        return datetime.now().strftime(Datetime.datetime_format(**kwargs))
-    
+        return Datetime.NOW().strftime(Datetime.datetime_format(**kwargs))
+
  
 #%%
 #==============================================================================
