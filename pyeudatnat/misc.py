@@ -144,20 +144,6 @@ class Type(object):
     __PPT2NPT = {n:np.dtype(n).name for n in __PPTYPES}
     # See http://docs.scipy.org/doc/numpy/reference/arrays.dtypes.html and
     # http://docs.scipy.org/doc/numpy/reference/arrays.scalars.html.
-
-    # Python pack types <-> Numpy conversion
-    ppt2npt = lambda t: Type.__PPT2NPT[t]
-    # note regarding np.dtype:
-    #   np.dtype('B')           -> dtype('uint8')
-    #   np.dtype('uint8')       -> dtype('uint8')
-    #   np.dtype(np.uint8)      -> dtype('uint8')
-    # so that on the current machine where it is implemented
-    # assert ppt2npy == {'B':'uint8','b': 'int8','H':'uint16','h':'int16','I':'uint32',
-    #   'i':'int32', 'f':'float32', 'd':'float64'}
-    # but... in the future?!         
-    
-    # Numpy -> Python pack types conversion
-    npt2ppt = lambda t: dict(Type.__PPT2NPT.values(), Type.__PPT2NPT.keys())[t]
     
     # Dictionary of Python -> Numpy
     __NPT2PYT = { np.dtype('b'):                bool,
@@ -172,12 +158,6 @@ class Type(object):
                   np.dtype('datetime64'):       datetime.datetime,
                   np.dtype('datetime64[ns]'):   datetime.datetime
                  } 
-
-    # Numpy -> Python types conversion
-    npt2pyt = lambda t: Type.__NPT2PYT[t]
-    
-    # Pandas -> Python types conversion
-    pdt2pyt = npt2pyt
   
     # Dictionary of Python -> Numpy
     def __rev_dict_unique_values(d):
@@ -191,18 +171,54 @@ class Type(object):
     #             float:      [np.dtype('f'), np.dtype(float)],
     #             datetime.datetime:   [np.dtype('datetime64'), np.dtype('datetime64[ns]')],
     #             } 
-        
-    # Python -> Numpy types conversion
-    pyt2npt = lambda t: Type.__PYT2NPT[t]
-    
-    # Python -> Pandas types conversion
-    pyt2pdt = pyt2npt
-    
-    # Python type name -> Numpy type conversion
-    pytname2npt = lambda t: {k.__name__:v for (k,v) in Type.__PYT2NPT.items()}[t]
 
-    # Python type name -> Pandas type conversion
+    #/************************************************************************/
+    ppt2npt = lambda t: Type.__PPT2NPT[t]
+    """Conversion method Python pack <-> Numpy types.
+    """
+    # note regarding np.dtype:
+    #   np.dtype('B')           -> dtype('uint8')
+    #   np.dtype('uint8')       -> dtype('uint8')
+    #   np.dtype(np.uint8)      -> dtype('uint8')
+    # so that on the current machine where it is implemented
+    # assert ppt2npy == {'B':'uint8','b': 'int8','H':'uint16','h':'int16','I':'uint32',
+    #   'i':'int32', 'f':'float32', 'd':'float64'}
+    # but... in the future?!         
+    
+    #/************************************************************************/
+    npt2ppt = lambda t: dict(Type.__PPT2NPT.values(), Type.__PPT2NPT.keys())[t]
+    """Conversion method Numpy -> Python pack types.
+    """
+
+    #/************************************************************************/
+    npt2pyt = lambda t: Type.__NPT2PYT[t]
+    """Conversion method Numpy -> Python types.
+    """
+    
+    #/************************************************************************/
+    pdt2pyt = npt2pyt
+    """Conversion method Pandas -> Python types.
+    """
+        
+    #/************************************************************************/
+    pyt2npt = lambda t: Type.__PYT2NPT[t]
+    """Conversion method Python -> Numpy types.
+    """
+    
+    #/************************************************************************/
+    pyt2pdt = pyt2npt
+    """Conversion method Python -> Pandas types.
+    """
+    
+    #/************************************************************************/
+    pytname2npt = lambda t: {k.__name__:v for (k,v) in Type.__PYT2NPT.items()}[t]
+    """Conversion method Python type name -> Numpy type.
+    """
+    
+    #/************************************************************************/
     pytname2pdt = pytname2npt
+    """Conversion method Python type name -> Pandas type.
+    """
     
 
 #%%
@@ -261,6 +277,7 @@ class Datetime(object):
     __TIMEDELTA_KWARGS_REV = {v:k for (k,v) in TIMEDELTA_KWARGS.items()}
     __TIMEDELTA_ITEMS = list(TIMEDELTA_KWARGS.keys()) + list(TIMEDELTA_KWARGS.values()) 
 
+    #/************************************************************************/
     @classmethod
     def units_to(cls, from_, to, time=1.):       
         """Perform simple timing units conversion.
@@ -292,6 +309,7 @@ class Datetime(object):
                 to = cls.__TIMEDELTA_KWARGS_REV[to]
         return cls.UNITS_TO[from_][to] * time
         
+    #/************************************************************************/
     @classmethod
     def convert_time_units(cls, to='mn', **kwargs):
         """Convert composed timing units to a single one.
@@ -331,6 +349,7 @@ class Datetime(object):
             if u in kwargs: t += cls.units_to(u, to, kwargs.get(u))
         return t
                                               
+    #/************************************************************************/
     @classmethod
     def datetime(cls, *arg, **kwargs):  # datetime = arg
         """Perform time conversions in between various (not so) standard timing 
@@ -573,6 +592,7 @@ class Datetime(object):
         elif dict_:
             return d_datetime
                                               
+    #/************************************************************************/
     @classmethod
     def timedelta(cls, *span, **kwargs): 
         """Perform some duration calculations and conversions.
@@ -704,7 +724,7 @@ class Datetime(object):
         else: #if str_:
             return span
 
-        
+    #/************************************************************************/
     @classmethod
     def span(cls, **kwargs):
         """Calculate the timing span (duration) in between two given beginning 
@@ -725,9 +745,8 @@ class Datetime(object):
         Returns
         -------
         d : datetime.timedelta, str, float, dict   
-            duration between the `since` and `until timing
-            instances, expressed in any the format passed in `fmt`
-            and accepted by :meth:`Datetime.timedelta`\ .
+            duration between the `since` and `until` timing instances, expressed in any 
+            the format passed in `fmt` and accepted by :meth:`Datetime.timedelta`\ .
         
         Example
         -------
@@ -749,7 +768,7 @@ class Datetime(object):
         The fact that microseconds are not taken into account ensures the consistency
         of the results when converting in between different formats:             
         
-        >>> until_iso = Datetime.datetime(until, **{{'fmt':'iso'}})
+        >>> until_iso = Datetime.datetime(until, fmt='iso')
         >>> until_iso
             '2014-08-28T19:30:40'
         >>> print until_iso # microseconds have been dumped...
@@ -781,7 +800,127 @@ class Datetime(object):
             return span
         else:
             return cls.timedelta(span, **kwargs) 
+        
+    #/************************************************************************/
+    @classmethod
+    def since(cls, **kwargs):
+        """Calculate a beginning date(time) given a duration and an ending date(time).
+        
+            >>> s = Datetime.since(**kwargs)) 
+                       
+        Keyword Arguments
+        -----------------        
+        until : datetime.datetime, str, float, dict   
+            ending date instance whose format is any of those accepted by :meth:`Datetime.datetime`.         
+        span : datetime.timedelta, str, float, dict   
+            duration expressed in any of the formats accepted by :meth:`Datetime.timedelta`\ .
+        fmt : str
+            additional parameter for formatting the output result: see :meth:`Datetime.datetime`\ .
+            
+        Returns
+        -------
+        s : datetime.datetime, str, float, dict   
+            beginning date estimated from :literal:`until` and :literal:`span` timing 
+            arguments, expressed in any format as in :literal:`fmt` and  accepted by 
+            :meth:`Datetime.datetime`\ .
 
+        Example
+        -------
+        >>> since = datetime.datetime.now() # this is: datetime.datetime(2014, 8, 19, 16, 27, 41, 629000)
+        >>> print since
+            2014-08-19 16:27:41.629000        
+        >>> span = '1d'
+        >>> until = since + datetime.timedelta(1)
+        >>> print until
+            2014-08-20 16:27:41.629000
+        >>> print Datetime.since(until=until, span=span)
+            {{'second': 41, 'hour': 16, 'year': 2014, 'day': 20, 'minute': 27, 'month': 8}}
+        >>> since_c = Datetime.since(until=until, span=span, fmt='datetime')
+        >>> print since_c # this is: datetime.datetime(2014, 8, 19, 16, 23, 27)
+            2014-08-20 16:27:41
+        >>> since_c == since
+            False
+        >>> since_c - since # we missed the microseconds...
+            datetime.timedelta(0, 86399, 371000)
+            
+        Again, we can ensure precision by including the microseconds in the calculation:
+
+        >>> since_c = Datetime.since(until=until, span=span, fmt='datetime', no_micro_secs=False)
+        >>> print since_c # this is datetime.datetime(2014, 8, 20, 16, 27, 41, 629000)
+            2014-08-19 16:27:41.629000
+        >>> since_c == since 
+            True
+
+        Other results are as expected, independently of the format of the input arguments:
+        
+        >>> until_iso = Datetime.datetime(until, fmt='iso')
+        >>> print until_iso
+            2014-08-20T16:27:41
+        >>> Datetime.since(until=until_iso, span=span, fmt=dict)
+            {{'second': 41, 'hour': 16, 'year': 2014, 'day': 19, 'minute': 27, 'month': 8}}
+        """
+        until, span = kwargs.pop('until',None), kwargs.pop('span',None) 
+        if not(until and span):
+            raise IOError("Missing arguments")    
+        # make a precise calculation, up to the microsecond
+        since = cls.datetime(until, fmt='datetime', no_micro_secs=False)  \
+            - cls.timedelta(span, fmt='timedelta')
+        # however return as desired
+        if (not kwargs.get('fmt') or kwargs.get('fmt')=='datetime')      \
+            and not kwargs.get('no_micro_secs',True):   
+            return since
+        else:
+            return cls.datetime(since, **kwargs) 
+        
+    #/************************************************************************/
+    @classmethod
+    def until(cls, **kwargs):
+        """Calculate a beginning date(time) given a duration and an ending date(time).
+        
+            >>> u = Datetime.until(**kwargs)) 
+                       
+        Keyword Arguments
+        -----------------        
+        since : datetime.datetime, str, float, dict   
+            beginning date instance whose format is any of those accepted by :meth:`Datetime.datetime`\ .         
+        span,fmt :   
+            see :meth:`Datetime.since`.
+            
+        Returns
+        -------
+        u : datetime.datetime, str, float, dict   
+            ending date estimated from :literal:`since` and :literal:`span`
+            timing arguments, expressed in any format as in :literal:`fmt` and 
+            accepted by :meth:`Datetime.datetime`\ .
+            
+        'second': 41, 'hour': 16, 'year': 2014, 'day': 20, 'minute': 27, 'month': 8 
+
+        Example
+        -------
+        >>> since = datetime.datetime.now() # this is: datetime.datetime(2014, 8, 19, 16, 45, 5, 94000)
+        >>> print since
+            2014-08-19 16:45:05.094000        
+        >>> span = datetime.timedelta(2) # 2 days
+        >>> print span
+            2 days, 0:00:00
+        >>> until = Datetime.until(since=since, span=span, fmt='iso')
+        >>> print until
+            '2014-08-21T16:45:05'   
+        >>> Datetime.since(until=until, span=span, fmt='datetime')
+            datetime.datetime(2014, 8, 19, 16, 45, 5)           
+        """
+        since, span = kwargs.pop('since',None), kwargs.pop('span',None) 
+        if not(since and span):
+            raise IOError('missing arguments')           
+        # make a precise calculation, up to the microsecond
+        until = cls.datetime(since, fmt='datetime', no_micro_secs=False)  \
+            + cls.timedelta(span, fmt='timedelta')
+        # however return as desired
+        if (not kwargs.get('fmt') or kwargs.get('fmt')=='datetime')      \
+            and not kwargs.get('no_micro_secs',True):   
+            return until
+        else:
+            return cls.datetime(until, **kwargs) 
 
     #/************************************************************************/
     @staticmethod
