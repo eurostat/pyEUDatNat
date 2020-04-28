@@ -33,7 +33,7 @@ Module implementing miscenalleous Input/Output methods.
 # *credits*:      `gjacopo <jacopo.grazzini@ec.europa.eu>`_ 
 # *since*:        Thu Apr  9 09:56:45 2020
 
-#%%                
+#%% Settings   
 
 import io, os#analysis:ignore
 from os import path as osp
@@ -110,10 +110,8 @@ else:
 from pyeudatnat.misc import Miscellaneous, File
 
 
-#%%
 #==============================================================================
-# Class Requests
-#==============================================================================
+#%% Class Requests
     
 class Requests(object):
 
@@ -318,10 +316,8 @@ class Requests(object):
         return data 
     
 
-#%%
 #==============================================================================
-# Class Dataframe
-#==============================================================================
+#%% Class Dataframe
     
 class Dataframe(object):
     """Static methods for Input/Output pandas dataframe processing, e.f. writing
@@ -718,49 +714,49 @@ class Dataframe(object):
                 raise IOError("Data source '%s' not found on disk" % src)  
             else:
                 data = src
-        ## option 1: transforming files in zipped source directly into dataframe 
-        ## while unziping with from_zip
-        #if zipfile.is_zipfile(data) or any([src.endswith(p) for p in ['zip', 'gz', 'gzip', 'bz2'] ]):
-        #    try:
-        #        return Dataframe.from_zip(data, file, **kwargs)
-        #    except:
-        #        raise IOError("Impossible unzipping data from zipped file '%s'" % src)   
-        #else:
-        #    try:    fmt = os.path.splitext(file)[-1].replace('.','')
-        #    except: pass
-        #    else:   kwargs.update({'fmt':fmt, 'all_fmt': False})
-        #    try:
-        #        return Dataframe.from_data(data, **kwargs)
-        #    except:
-        #        raise IOError("Wrong formatting of source data into dataframe")             
-        # option 2: opening and parsing files from zipped source to transform
-        # them into dataframes - 
+        #  # option 1: opening and parsing files from zipped source to transform
+        # # them into dataframes - 
+        # if zipfile.is_zipfile(data) or any([src.endswith(p) for p in ['zip', 'gz', 'gzip', 'bz2'] ]):
+        #     try:
+        #         # file = File.unzip(data, namelist=True) 
+        #         kwargs.update({'open': file}) # when file=None, will read a single file
+        #         unzipped = File.unzip(data, **kwargs) 
+        #     except:
+        #         raise IOError("Impossible unzipping data from zipped file '%s'" % src)   
+        # else:
+        #     unzipped = {file: data}
+        # results = {}
+        # for file, data in unzipped.items():
+        #     try:
+        #         fmt = os.path.splitext(file)[-1].replace('.','')
+        #     except:
+        #         pass
+        #     else:
+        #         kwargs.update({'fmt':fmt, 'all_fmt': False})
+        #     try:
+        #         results.update({file: Dataframe.from_data(data, **kwargs)})
+        #     except:
+        #         raise IOError("Wrong formatting of source data into dataframe") 
+        # return results if len(results.keys())>1 else list(results.values())[0]
+        #option 2: transforming files in zipped source directly into dataframe 
+        #while unziping with from_zip
         if zipfile.is_zipfile(data) or any([src.endswith(p) for p in ['zip', 'gz', 'gzip', 'bz2'] ]):
             try:
-                # file = File.unzip(data, namelist=True) 
-                kwargs.update({'open': file}) # when file=None, will read a single file
-                unzipped = File.unzip(data, **kwargs) 
+                return Dataframe.from_zip(data, file, **kwargs)
             except:
                 raise IOError("Impossible unzipping data from zipped file '%s'" % src)   
-        results = {}
-        for file, data in unzipped.items():
+        else:
+            try:    fmt = os.path.splitext(src)[-1].replace('.','')
+            except: pass
+            else:   kwargs.update({'fmt':fmt, 'all_fmt': False})
             try:
-                fmt = os.path.splitext(file)[-1].replace('.','')
+                return Dataframe.from_data(data, **kwargs)
             except:
-                pass
-            else:
-                kwargs.update({'fmt':fmt, 'all_fmt': False})
-            try:
-                results.update({file: Dataframe.from_data(data, **kwargs)})
-            except:
-                raise IOError("Wrong formatting of source data into dataframe") 
-        return results if len(results.keys())>1 else list(results.values())[0]
+                raise IOError("Wrong formatting of source data into dataframe")             
         
 
-#%%
 #==============================================================================
-# Class Json
-#==============================================================================
+#%% Class Json
 
 class Json(object):
     

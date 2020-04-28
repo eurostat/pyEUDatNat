@@ -21,7 +21,7 @@ and ingestion of datasets made openly available by national/regional/local autho
 # 88              d8'                                                            
 # 88             d8'                                                             
                                                                 
-#%%
+#%% Settings
 
 #import os, sys
 #import warnings#analysis:ignore
@@ -38,7 +38,7 @@ and ingestion of datasets made openly available by national/regional/local autho
 
 from os import path as osp
 
-#%%
+#%% Global vars
 
 PACKNAME            = 'pyeudatnat' # this package...
 """Name of this package.

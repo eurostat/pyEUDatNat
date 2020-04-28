@@ -30,7 +30,7 @@ processing.
 # *credits*:      `gjacopo <jacopo.grazzini@ec.europa.eu>`_ 
 # *since*:        Thu Apr  9 09:56:45 2020
 
-#%%                
+#%% Settings           
 
 import warnings#analysis:ignore
 
@@ -84,7 +84,7 @@ else:
 from pyeudatnat import COUNTRIES
 
 
-#%%                
+#%% Global vars             
 
 __CODERS        = { }
 CODERS          = __CODERS                                                           \
@@ -111,10 +111,8 @@ PLACE = ['street', 'number', 'postcode', 'city', 'country']
 """
 
 
-#%%
 #==============================================================================
-# Method isoCountry
-#==============================================================================
+#%% Method isoCountry
 
 def isoCountry(arg):
     """Given a country name or an ISO 3166 code, return the pair {name,code}.
@@ -164,10 +162,8 @@ def isoCountry(arg):
     return {'code': cc, 'name': country}
 
 
-#%%
 #==============================================================================
-# Class GeoService
-#==============================================================================
+#%% Class GeoService
   
 import time
 

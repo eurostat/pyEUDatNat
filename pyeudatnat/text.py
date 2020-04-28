@@ -25,7 +25,7 @@ Module implementing miscenalleous text processing methods, including translation
 # *credits*:      `gjacopo <jacopo.grazzini@ec.europa.eu>`_ 
 # *since*:        Thu Apr  9 09:56:45 2020
 
-#%%                
+#%% Settings                
 
 import re
 import warnings#analysis:ignore
@@ -56,7 +56,7 @@ else:
 from pyeudatnat import COUNTRIES#analysis:ignore
 
 
-#%%                
+#%% Global vars             
 
 LANGS           = { ## alpha-3/ISO 639-2 codes
                     'sq': 'albanian',
@@ -113,10 +113,8 @@ LANGS           = { ## alpha-3/ISO 639-2 codes
 DEFLANG         = 'en'
   
   
-#%%
 #==============================================================================
-# Method isoLang
-#==============================================================================
+#%% Method isoLang
    
 def isoLang(arg):
     """Given a language or an ISO 639 locale code, return the pair {language,locale}.
@@ -153,10 +151,8 @@ def isoLang(arg):
     return {'code': locale, 'name': language}
 
     
-#%%
 #==============================================================================
-# Class Interpret
-#==============================================================================
+#%% Class Interpret
 
 class Interpret(object):
 
@@ -221,10 +217,8 @@ class Interpret(object):
         return [t.text for t in cls.UTRANSLATOR.translate(text, src=ilang, dest=olang)]
            
  
-#%%
 #==============================================================================
-# Class TextProcess
-#==============================================================================
+#%%Class TextProcess
 
 class TextProcess(object):
     """Text handling and string manipulation.

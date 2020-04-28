@@ -22,6 +22,8 @@ Module implementing miscellaneous useful methods.
 # *since*:        Sun Apr 19 16:36:19 2020
 
 
+#%% Settings
+
 import io, os, sys#analysis:ignore
 from os import path as osp
 import inspect
@@ -61,14 +63,14 @@ else:
 
 from pyeudatnat import PACKNAME
 
+
+#%% Global var
+
 ISWIN           = os.name=='nt' # sys.platform[0:3].lower()=='win'
 
 
-#%%
-
 #==============================================================================
-# Class Miscellaneous
-#==============================================================================
+#%% Class Miscellaneous
 
 class Miscellaneous(object):
     
@@ -87,10 +89,8 @@ class Miscellaneous(object):
         return kw
 
 
-#%%
 #==============================================================================
-# Class Type
-#==============================================================================
+#%% Class Type
 
 class Type(object):   
     
@@ -148,11 +148,12 @@ class Type(object):
     # Dictionary of Python -> Numpy
     __NPT2PYT = { np.dtype('b'):                bool,
                   np.dtype('i'):                bool,
-                  np.dtype('O'):                str,
-                  object:                       str,
+                  np.dtype('O'):                str, # not object
+                  np.dtype('U'):                str,
+                  object:                       object,
                   np.dtype('i'):                int, 
                   np.dtype('uint32'):           int, 
-                  np.dtype('int'):              int, 
+                  np.dtype(int):                int, 
                   np.dtype('f'):                float, 
                   np.dtype(float):              float,
                   np.dtype('datetime64'):       datetime.datetime,
@@ -167,7 +168,7 @@ class Type(object):
     __PYT2NPT = __rev_dict_unique_values(__NPT2PYT)        
     #__PY2NPT = { bool:      [np.dtype('b'), np.dtype('i')],
     #             str:        [np.dtype('O'), object], 
-    #             int:        [np.dtype('i'), np.dtype('uint32'), np.dtype('int')],
+    #             int:        [np.dtype('i'), np.dtype('uint32'), np.dtype(int)],
     #             float:      [np.dtype('f'), np.dtype(float)],
     #             datetime.datetime:   [np.dtype('datetime64'), np.dtype('datetime64[ns]')],
     #             } 
@@ -204,27 +205,61 @@ class Type(object):
     pyt2npt = lambda t: Type.__PYT2NPT[t]
     """Conversion method Python -> Numpy types.
     """
+
+    __UPYT2NPT = { bool:                       np.dtype('b'),
+                   str:                        np.dtype('U'),
+                   int:                        np.dtype(int), #np.dtype('i')
+                   float:                      np.dtype(float), # np.dtype('f')
+                   datetime.datetime:          np.dtype('datetime64'),
+                   object:                     np.dtype('O')
+                   } 
+        
+    #/************************************************************************/
+    upyt2npt = lambda t: Type.__UPYT2NPT[t]
+    """Conversion method Python -> unique Numpy type.
+    """
+        
+    #/************************************************************************/
+    upyt2pdt = upyt2npt
+    """Conversion method Python -> unique Pandas type.
+    """
     
     #/************************************************************************/
     pyt2pdt = pyt2npt
     """Conversion method Python -> Pandas types.
     """
     
+    # Dictionary of Numpy type -> unique Python name
+    __NPT2UPYN = {k:v.__name__ for (k,v) in __NPT2PYT.items()}
+    
+    # Dictionary of Python name -> unique Numpy type
+    __UPYN2NPT = {k.__name__:v for (k,v) in __UPYT2NPT.items()}
+
+    upytname2npt = lambda n: Type.__UPYN2NPT[n]
+    """Conversion method Python type name -> unique Numpy type.
+    """
+     
+    unpt2pytname = lambda t: Type.__NPT2UPYN[t]
+    """Conversion method Numpy type -> unique Python type name.
+    """
+
+    upytname2pdt = upytname2npt
+    """Conversion method Python type name -> unique Pandas type.
+    """
+    
     #/************************************************************************/
-    pytname2npt = lambda t: {k.__name__:v for (k,v) in Type.__PYT2NPT.items()}[t]
-    """Conversion method Python type name -> Numpy type.
+    pytname2npt = lambda n: {k.__name__:v for (k,v) in Type.__PYT2NPT.items()}[n]
+    """Conversion method Python type name -> Numpy types list.
     """
     
     #/************************************************************************/
     pytname2pdt = pytname2npt
-    """Conversion method Python type name -> Pandas type.
+    """Conversion method Python type name -> Pandas types list.
     """
+   
     
-
-#%%
 #==============================================================================
-# Class Datetime
-#==============================================================================
+#%% Class Datetime
     
 class Datetime(object):
     """Static and class methods for datetime objects manipulation.
@@ -359,10 +394,11 @@ class Datetime(object):
             
         Arguments
         ---------        
-        dtime : datetime.datetime, str, float, dict
+        dtime : datetime.datetime, datetime.date, str, float, dict
             an object specifying a time, e.g. it can be:    
             
-            - a :class:`datetime.datetime` object: :literal:`datetime.datetime(2014, 6, 19, 17, 58, 5)`,
+            - a :class:`datetime.datetime` (or :class:`datetime.date`) object: 
+              :literal:`datetime.datetime(2014, 6, 19, 17, 58, 5)`,
             - an iso-formated (ISO 8601) date: :literal:`"2014-06-19T17:58:05"` or 
               :literal:`"2014-06-19 17:58:05"`,
             - a string date: :literal:`"Thu Jun 19 17:58:05 2014"`,
@@ -430,7 +466,7 @@ class Datetime(object):
 
         Again, we can use dictionary of positional arguments to pass the proper format:
 
-        >>> dt == Datetime.datetime(dt_dict, **{{'fmt':'datetime'}})        
+        >>> dt == Datetime.datetime(dt_dict, fmt='datetime')        
             True
         >>> dt == Datetime.datetime("Thu Jun 19 17:58:05 2014", fmt='datetime')
             True
@@ -449,23 +485,23 @@ class Datetime(object):
             
         Many more conversions are possible though:
         
-        >>> Datetime.datetime(dt, **{{'fmt':''%Y-%m-%dT%H:%M:%S''}})
+        >>> Datetime.datetime(dt, fmt='%Y-%m-%dT%H:%M:%S')
             '2014-06-19T17:58:05'
-        >>> Datetime.datetime(dt_dict, **{{'fmt':''%Y-%m-%dT%H:%M:%S''}})
+        >>> Datetime.datetime(dt_dict, fmt='%Y-%m-%dT%H:%M:%S')
             '2014-06-19T17:58:05'
-        >>> Datetime.datetime(dt_dict, **{{'fmt':'%Y-%m-%d %H:%M:%S+00'}})
+        >>> Datetime.datetime(dt_dict, fmt=%Y-%m-%d %H:%M:%S+00')
             '2014-06-19 17:58:05+00'
         >>> Datetime.datetime(dt, fmt='%Y-%m-%d %H:%M:%S')
             '2014-06-19 17:58:05'  
         >>> Datetime.datetime(dt_dict, fmt='%Y-%m-%d')
             '2014-06-19'
-        >>> Datetime.datetime(dt, **{{'fmt':True}}) # use ctime()
+        >>> Datetime.datetime(dt, fmt=True) # use ctime()
             "Thu Jun 19 17:58:05 2014"
         >>> Datetime.datetime(dt_dict, fmt='calendar')
             (2014, 25, 4)
         >>> Datetime.datetime(dt_dict, fmt='iso')
             '2014-06-19T17:58:05' 
-        >>> Datetime.datetime(dt, **{{'fmt':'iso'}})
+        >>> Datetime.datetime(dt, fmt='iso')
             '2014-06-19T17:58:05' 
         >>> Datetime.datetime("Thu Jun 19 17:58:05 2014")
             {{'second': 5, 'hour': 17, 'year': 2014, 'day': 19, 'minute': 58, 'month': 6}}
@@ -475,13 +511,13 @@ class Datetime(object):
         >>> import dateutil
         >>> utc_tz = dateutil.tz.tzutc() # note: same as timing.UTC_TZ
         >>> dt_utc = dt.replace(tzinfo=utc_tz)
-        >>> Datetime.datetime(dt_utc, **{{'fmt': 'timestamp'}})
+        >>> Datetime.datetime(dt_utc, fmt=timestamp')
             1403200685 
         
         As desired, the operation is idempotent (when the right parameters are passed!):        
         
         >>> f_dt = Datetime.datetime(dt, fmt='%Y-%m-%d %H:%M:%S')
-        >>> dt == Datetime.datetime(f_dt, **{{'fmt': 'datetime'}})
+        >>> dt == Datetime.datetime(f_dt, fmt='datetime')
             True
         >>> f_dt_utc = Datetime.datetime(dt_utc, fmt='timestamp')
         >>> dt_utc == Datetime.datetime(f_dt_utc, fmt='datetime')
@@ -518,7 +554,7 @@ class Datetime(object):
         elif isinstance(arg, (int,float)):
             try:    arg = datetime.datetime.fromtimestamp(arg, cls.__DEF_TIMEZ) # we put a tz
             except: raise IOError("Timestamp %s not recognised" % arg) 
-        elif not isinstance(arg, (string_types,Mapping,datetime.datetime)):
+        elif not isinstance(arg, (string_types,Mapping,datetime.datetime,datetime.date)):
             raise TypeError("Wrong input date time format") 
         if fmt=='datetime':             fmt, dtime = None, True
         elif fmt=='timestamp':          fmt, unix = None, True
@@ -531,10 +567,10 @@ class Datetime(object):
         # special case: already an instance datetime.datetime
         # proceed...
         d_datetime, _datetime = {}, None
-        if isinstance(arg,datetime.datetime):
+        if isinstance(arg,(datetime.datetime,datetime.date)):
             _datetime, arg = arg, arg.ctime()
         # update the possible output formats       
-        if isinstance(arg,(string_types,datetime.datetime)) and not (fmt or isoformat or isocal or dict_ or unix):
+        if isinstance(arg,(string_types,datetime.datetime,datetime.date)) and not (fmt or isoformat or isocal or dict_ or unix):
             dict_ = True
         if isinstance(arg,string_types):
             try:
@@ -734,7 +770,7 @@ class Datetime(object):
             
         Keyword Arguments
         -----------------        
-        since,until : datetime.datetime, str, float, dict   
+        since,until : datetime.datetime, datetime.date, str, float, dict   
             beginning and ending (respectively) time instances whose formats are any 
             of those accepted by :meth:`Datetime.datetime` (not necessarly identical
             for both instances).         
@@ -810,7 +846,7 @@ class Datetime(object):
                        
         Keyword Arguments
         -----------------        
-        until : datetime.datetime, str, float, dict   
+        until : datetime.datetime, datetime.date, str, float, dict   
             ending date instance whose format is any of those accepted by :meth:`Datetime.datetime`.         
         span : datetime.timedelta, str, float, dict   
             duration expressed in any of the formats accepted by :meth:`Datetime.timedelta`\ .
@@ -881,7 +917,7 @@ class Datetime(object):
                        
         Keyword Arguments
         -----------------        
-        since : datetime.datetime, str, float, dict   
+        since : datetime.datetime, datetime.date, str, float, dict   
             beginning date instance whose format is any of those accepted by :meth:`Datetime.datetime`\ .         
         span,fmt :   
             see :meth:`Datetime.since`.
@@ -932,7 +968,7 @@ class Datetime(object):
             
         Arguments
         ---------        
-        time1,time2 : datetime.datetime, str, float, dict       
+        time1,time2 : datetime.datetime, datetime.date, str, float, dict       
             time instances whose format are any accepted by :meth:`Datetime.datetime`\ . 
             
         Returns
@@ -1097,10 +1133,8 @@ class Datetime(object):
         return Datetime.NOW().strftime(Datetime.dtformat(**kwargs))
 
  
-#%%
 #==============================================================================
-# Class File
-#==============================================================================
+#%% Class File
     
 class File(object):
     """Static methods for Input/Output file processing.

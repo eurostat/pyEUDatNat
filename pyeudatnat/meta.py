@@ -18,7 +18,7 @@ Module metadata template models.
 # *credits*:      `gjacopo <jacopo.grazzini@ec.europa.eu>`_ 
 # *since*:        Thu Apr  9 09:56:45 2020
 
-#%%                
+#%% Settings           
 
 from os import path as osp
 import warnings#analysis:ignore
@@ -33,10 +33,8 @@ from pyeudatnat import COUNTRIES, PACKPATH#analysis:ignore
 from pyeudatnat.io import File, Json#analysis:ignore
 
 
-#%%
 #==============================================================================
-# Class MetaDat
-#==============================================================================
+#%% Class MetaDat
 
 class MetaDat(dict):
     """Generic class used to represent metadata instances as dictionary.
@@ -206,10 +204,9 @@ class MetaDat(dict):
             except:
                 raise IOError("Error saving metadata file")
 
-#%%
+
 #==============================================================================
-# Class MetaDatNat
-#==============================================================================
+#%% Class MetaDatNat
 
 class MetaDatNat(MetaDat):
     """Metadata class for national datasets.
