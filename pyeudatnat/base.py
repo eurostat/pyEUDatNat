@@ -27,7 +27,7 @@ level into harmonised format.
 # *credits*:      `gjacopo <jacopo.grazzini@ec.europa.eu>`_ 
 # *since*:        Tue Fri 20 23:14:24 2020
 
-#%%                
+#%% Settings            
 
 from os import path as osp
 import warnings#analysis:ignore
@@ -47,20 +47,19 @@ from pyeudatnat.io import Json, Dataframe
 from pyeudatnat.text import LANGS, Interpret, isoLang
 from pyeudatnat.geo import GeoService, isoCountry
 
+
+#%% Global vars             
+
 __THISDIR         = osp.dirname(__file__)
 
 _INDEX_ALWAYS_AS_ILANG = True # that's actually a debug...that is not a debug anymore!
 _META_ALWAYS_UPDATED = False
 
-#%%                
-
 BASETYPE        = {t.__name__: t for t in [type, bool, int, float, str, datetime]}
     
     
-#%%
 #==============================================================================
-# Class BaseDatNat
-#==============================================================================
+#%% Class BaseDatNat
 
 class BaseDatNat(object):
     """Base class used to represent national data sources.
@@ -390,8 +389,9 @@ class BaseDatNat(object):
         # ifmt = osp.splitext(src)[-1]
         encoding = kwargs.pop('enc', self.enc) # self.meta.get('enc')
         sep = kwargs.pop('sep', self.sep) # self.meta.get('sep')
-        kwargs.update({'dtype': object, 'encoding': encoding, 'sep': sep, 
-                       'compression': 'infer'})
+        kwargs.update({'encoding': encoding, 'sep': sep,
+                       'dtype': kwargs.pop('dtype', object),  
+                       'compression': kwargs.pop('compression','infer')})
         kwargs.update(self.cache)
         self.data = Dataframe.from_source(src, file=file, **kwargs)       
         try:
@@ -1034,10 +1034,9 @@ class BaseDatNat(object):
                 raise IOError("Impossible saving metadata file")
           
 
-#%% 
 #==============================================================================
-# Function datnatFactory
-#==============================================================================
+#%% Function datnatFactory
+
 def datnatFactory(*args, **kwargs):
     """Generic function to derive a class from the base class :class:`BaseFacility`
     depending on specific metadata and a given geocoder.
@@ -1150,6 +1149,9 @@ def datnatFactory(*args, **kwargs):
     if not CODER in ({}, ''): # None accepted as default geocoder!
         try:
             geoserv = GeoService(CODER)
+        except ImportError:
+            warnings.warn("\n! No geocoder available !")
+            geoserv = None
         except:
             raise IOError("Geocoder '%s' not recognised " % CODER)
     else: 
