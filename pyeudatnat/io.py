@@ -734,7 +734,7 @@ class Dataframe(object):
     def from_data(src, **kwargs):
         """
         """
-        FMTS = ['csv', 'json', 'xls', 'xlsx', 'xml', 'html']
+        FMTS = ['csv', 'json', 'geojson',g 'xls', 'xlsx', 'xml', 'html']
         fmt = kwargs.pop('fmt', FMTS)
         all_fmt = kwargs.pop('all_fmt', False)
         try:    assert isinstance(all_fmt, bool) 
@@ -758,6 +758,11 @@ class Dataframe(object):
         def read_json(s, **kw):
             nkw = Miscellaneous.inspect_kwargs(kw, pd.read_json)
             return pd.read_json(s, **nkw)
+        def read_geojson(s, **kw):
+            nkw = Miscellaneous.inspect_kwargs(kw, geojson.load)
+            # note that geojson.load is a wrapper around the core json.load function 
+            # with the same name, and will pass through any additional arguments
+            return geojson.load(s, **nkw)
         def read_html(s, **kw):
             nkw = Miscellaneous.inspect_kwargs(kw, pd.read_html)
             return pd.read_html(s, **nkw)
