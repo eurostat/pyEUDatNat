@@ -29,6 +29,7 @@ level into harmonised format.
 
 #%% Settings            
 
+import io, sys
 from os import path as osp
 import warnings#analysis:ignore
 
@@ -43,7 +44,7 @@ import pandas as pd
 
 from pyeudatnat import PACKPATH, COUNTRIES
 from pyeudatnat.meta import MetaDat, MetaDatNat
-from pyeudatnat.io import Json, Dataframe
+from pyeudatnat.io import Json, Dataframe, Content
 from pyeudatnat.text import LANGS, Interpret, isoLang
 from pyeudatnat.geo import GeoService, isoCountry
 
@@ -75,6 +76,7 @@ class BaseDatNat(object):
     def __init__(self, *args, **kwargs):
         # self.__config, self.__metadata = {}, {}
         self.__data = None                # data
+        self.__content = None             # content
         self.__columns, self.__index = {}, []
         self.__place, self.__proj = '', None
         try:
@@ -174,7 +176,7 @@ class BaseDatNat(object):
     @meta.setter#analysis:ignore
     def meta(self, meta):
         if not (meta is None or isinstance(meta, (MetaDatNat,Mapping))):         
-            raise TypeError("Wrong format for country METAdata '%s' - must be a dictionary" % meta)
+            raise TypeError("Wrong format for country METAdata: '%s' - must be a dictionary" % type(meta))
         self.__metadata = meta
 
     @property
@@ -183,8 +185,29 @@ class BaseDatNat(object):
     @config.setter#analysis:ignore
     def config(self, cfg):
         if not (cfg is None or isinstance(cfg, (MetaDat,Mapping))):         
-            raise TypeError("Wrong format for CONFIGuration info '%s' - must be a dictionary" % cfg)
+            raise TypeError("Wrong format for CONFIGuration info: '%s' - must be a dictionary" % type(cfg))
         self.__config = cfg
+
+    @property
+    def data(self):
+        return self.__data # or {}
+    @data.setter#analysis:ignore
+    def data(self, data):
+        if not (data is None or isinstance(data, (Mapping,Sequence, np.ndarray, #pd.arrays.PandasArray,
+                                                  pd.Index,pd. Series, pd.DataFrame))):         
+            raise TypeError("Wrong format for DATA: '%s' - must be an array, sequence or dictionary" % type(data))
+        self.__data = data
+
+    @property
+    def content(self):
+        return self.__data # or {}
+    @content.setter#analysis:ignore
+    def content(self, cont):
+        if not (cont is None or isinstance(cont, (Mapping, Sequence, string_types, bytes,
+                                                  # urllib3.response.HTTPResponse, requests.models.Response,
+                                                  io._io.StringIO, io._io.BytesIO))):         
+            raise TypeError("Wrong format for CONTENT: '%s' - must be an array, sequence or dictionary" % type(cont))
+        self.__content = cont
 
     @property
     def category(self):
@@ -196,7 +219,7 @@ class BaseDatNat(object):
         #elif isinstance(cat, Mapping):
         #    cat = str(list(typ.values())[0])
         else:
-            raise TypeError("Wrong format for CATEGORY '%s' - must be a string (or a dictionary)" % cat)
+            raise TypeError("Wrong format for CATEGORY: '%s' - must be a string (or a dictionary)" % type(cat))
         self.__category = cat
 
     @property
@@ -373,11 +396,36 @@ class BaseDatNat(object):
         self.__place = place
 
     #/************************************************************************/
+    def load_content(self, *src, **kwargs):
+        """Load content of source file.
+        
+                >>> datnat.load_content()
+        """
+        src = (src not in ((None,),()) and src[0]) or kwargs.pop('source', None) or self.source                                               
+        file = kwargs.pop('file', None) or self.file 
+        if src in (None,'') and file in (None,''):     
+             raise IOError("No source filename provided - set keyword file attribute/parameter")
+        elif not(src is None or isinstance(src, string_types)):     
+             raise TypeError('wrong format for source data - must be a string')
+        elif not(file is None or isinstance(file, string_types)):     
+             raise TypeError("Wrong format for filename - must be a string")
+        kwargs.update(self.cache)
+        self.content = Content.from_source(file, src=src, **kwargs)       
+        if self.source != src:             self.source = src
+        if self.file != file:           self.file = file
+
+    #/************************************************************************/
     def load_data(self, *src, **kwargs):
         """Load data source file.
         
-                >>> fac.load_data('data')
+                >>> datnat.load_data()
         """
+        ignore_content = kwargs.pop('ignore_content', False)
+        if ignore_content is False and self.content is not None:
+            try:
+                return Dataframe.from_data(self.content, **kwargs) 
+            except:
+                warnings.warn('\n! Could not load from content !')
         src = (src not in ((None,),()) and src[0]) or kwargs.pop('source', None) or self.source                                               
         file = kwargs.pop('file', None) or self.file 
         if src in (None,'') and file in (None,''):     
@@ -393,7 +441,7 @@ class BaseDatNat(object):
                        'dtype': kwargs.pop('dtype', object),  
                        'compression': kwargs.pop('compression','infer')})
         kwargs.update(self.cache)
-        self.data = Dataframe.from_source(src, file=file, **kwargs)       
+        self.data = Dataframe.from_source(file, src=src, **kwargs)       
         try:
             assert self.columns not in (None,[],[{}])
         except: 
@@ -411,7 +459,7 @@ class BaseDatNat(object):
         """Retrieve the name of the column associated to a given field (e.g., manually
         defined), depending on the language.
         
-                >>> fac.get_column(columns=['col1', 'col2'], ilang=None, olang=None)
+                >>> datnat.get_column(columns=['col1', 'col2'], ilang=None, olang=None)
         """
         columns = (columns not in ((None,),()) and columns[0])          or \
                     kwargs.pop('columns', None)                                 
@@ -489,7 +537,7 @@ class BaseDatNat(object):
         """Rename (and cast) the column associated to a given field (e.g., as identified
         in the index), depending on the language.
         
-                >>> fac.set_column(columns={'newcol': 'oldcol'})
+                >>> datnat.set_column(columns={'newcol': 'oldcol'})
         """
         columns = (columns not in ((None,),()) and columns[0])        or \
                     kwargs.pop('columns', None)                     
@@ -539,9 +587,9 @@ class BaseDatNat(object):
             if cast == self.data[ofield].dtype:
                 continue
             elif cast == datetime:                
-                self.data[ofield] = Dataframe.out_date(self.data, ofield, self.config.get('date') or '', ifmt=idate) 
+                self.data[ofield] = Dataframe.cast(self.data, ofield, self.config.get('date') or '', ifmt=idate) 
             else:
-                self.data[ofield] = Dataframe.out_cast(self.data, ofield, cast)
+                self.data[ofield] = Dataframe.cast(self.data, ofield, cast)
         return columns 
 
     #/************************************************************************/
@@ -616,7 +664,7 @@ class BaseDatNat(object):
     def define_place(self, *place, **kwargs):
         """Build the place field as a concatenation of existing columns.
         
-                >>> fac.define_place(place=['street', 'no', 'city', 'zip', 'country'])
+                >>> datnat.define_place(place=['street', 'no', 'city', 'zip', 'country'])
         """
         lang = kwargs.pop('lang', self.config.get('lang'))  
         place = (place not in ((None,),()) and place[0])            or \
@@ -666,7 +714,7 @@ class BaseDatNat(object):
         """Retrieve the geographical coordinates, may that be from existing lat/lon
         columns in the source file, or by geocoding the location name. 
         
-            >>> fac.find_location(latlon=['lat', 'lon'])
+            >>> datnat.find_location(latlon=['lat', 'lon'])
         """
         latlon = (latlon not in ((None,),()) and latlon)            or \
                 kwargs.pop('latlon', None)                        
@@ -756,7 +804,7 @@ class BaseDatNat(object):
     def prepare_data(self, *args, **kwargs):
         """Abstract method for data preparation.
         
-            >>> fac.prepare_data(*args, **kwargs)
+            >>> datnat.prepare_data(*args, **kwargs)
         """
         pass
     
@@ -765,7 +813,7 @@ class BaseDatNat(object):
         """Run the formatting of the input data according to the harmonised template
         as provided by the index metadata.
         
-            >>> fac.format_data(**index)
+            >>> datnat.format_data(**index)
         """
         _columns = kwargs.pop('index', {})
         if isinstance(_columns, string_types):
@@ -849,8 +897,8 @@ class BaseDatNat(object):
     def dumps_data(self, **kwargs):
         """Return JSON or GEOJSON formatted data.
         
-            >>> dic = fac.dumps_data(fmt='json')
-            >>> geom = fac.dumps_data(fmt='geojson')
+            >>> dic = datnat.dumps_data(fmt='json')
+            >>> geom = datnat.dumps_data(fmt='geojson')
         """
         fmt = kwargs.pop('fmt', None)
         if fmt is None: # we give it a default value...
@@ -892,8 +940,8 @@ class BaseDatNat(object):
     def dump_data(self, *dest, **kwargs):
         """Store transformed data in GEOJSON or CSV formats.
         
-            >>> fac.dump_data(dest=filename, fmt='csv')
-            >>> fac.dump_data(dest=filename, fmt='geojson')
+            >>> datnat.dump_data(dest=filename, fmt='csv')
+            >>> datnat.dump_data(dest=filename, fmt='geojson')
         """
         dest = (dest not in ((None,),()) and dest[0])               or \
              kwargs.pop('dest', None)                               or \
@@ -1004,7 +1052,7 @@ class BaseDatNat(object):
     def dump_meta(self, *dest, **kwargs):
         """Dump metadata into a JSON file.
         
-            >>> fac.dump_meta(dest=metaname)
+            >>> datnat.dump_meta(dest=metaname)
         """
         dest = (dest not in ((None,),()) and dest[0])               or \
              kwargs.pop('dest', None)   

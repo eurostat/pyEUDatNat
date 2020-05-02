@@ -107,7 +107,98 @@ except ImportError:
 else:
     _is_xml_installed = True
 
-from pyeudatnat.misc import Miscellaneous, File
+from pyeudatnat.misc import File as MiscFile, Miscellaneous
+
+#==============================================================================
+#%% Class File
+        
+class File(object):
+    
+    #/************************************************************************/
+    @staticmethod
+    def default_cache():
+        platform = sys.platform
+        if platform.startswith("win"): # windows
+            basedir = os.getenv("LOCALAPPDATA",os.getenv("APPDATA",osp.expanduser("~")))
+        elif platform.startswith("darwin"): # Mac OS
+            basedir = osp.expanduser("~/Library/Caches")
+        else:
+            basedir = os.getenv("XDG_CACHE_HOME",osp.expanduser("~/.cache"))
+        return osp.join(basedir, PACKNAME)    
+
+    #/****************************************************************************/
+    @staticmethod
+    def pick_lines(file, lines):
+        """Pick numbered lines from file.
+        """
+        return [x for i, x in enumerate(file) if i in lines]
+    
+    #/************************************************************************/
+    @staticmethod
+    def unzip(file, **kwargs):
+        try:
+            assert zipfile.is_zipfile(file)
+        except:
+            raise TypeError("Zip file '%s' not recognised" % file)
+        cache = kwargs.pop('cache', File.default_cache())
+        operators = [op for op in ['open', 'extract', 'extractall', 'getinfo', 'namelist', 'read', 'infolist'] \
+                     if op in kwargs.keys()] 
+        try:
+            assert operators in ([],[None]) or sum([1 for op in operators]) == 1
+        except:
+            raise IOError("Only one operation supported per call")
+        else:
+            if operators in ([],[None]):
+                operator = 'extractall'
+                kwargs.update({operator: cache})
+            else:
+                operator = operators[0] 
+        members, path = None, None
+        if operator in ('open', 'extract', 'getinfo', 'read'):
+            members = kwargs.pop(operator, None)
+        elif operator == 'extractall':
+            path = kwargs.pop('extractall', None)
+        else: # elif operator in ('infolist','namelist'):
+            try:
+                assert kwargs.get(operator) not in (False,None)
+            except:
+                raise IOError("No operation parsed")
+        if operator.startswith('extract'):
+            warnings.warn("\n! Data extracted from zip file will be physically stored on local disk !")
+        if isinstance(members,string_types):
+            members = [members,]
+        with zipfile.ZipFile(file) as zf:
+            namelist, infolist = zf.namelist(), zf.infolist() 
+            _namelist = [osp.basename(n) for n in namelist]
+            #if operator in  ('infolist','namelist'):
+            #        return getattr(zf, operator)()
+            if operator == 'namelist':
+                return namelist if len(namelist)>1 else namelist[0]
+            elif operator == 'infolist':
+                return infolist if len(infolist)>1 else infolist[0]
+            elif operator == 'extractall':                
+                return zf.extractall(path=path)   
+            if members is None and len(namelist)==1:
+                members = namelist
+            elif members is not None:
+                for i in reversed(range(len(members))):
+                    m = members[i]
+                    try:
+                        assert m in namelist
+                    except:
+                        try:
+                            assert m in _namelist
+                        except:
+                            warnings.warn("\n! File '%s' not found in source zip !" % m)
+                            members.pop(i)
+                        else:
+                            members[i] = namelist[_namelist.index(m)]
+            # now: operator in ('extract', 'getinfo', 'read')
+            if members in ([],None):
+                raise IOError("Impossible to retrieve member file(s) from zipped data")
+            results = {m: getattr(zf, operator)(m) for m in members}
+        return results
+        # raise IOError("Operation '%s' failed" % operator)
 
 
 #==============================================================================
@@ -117,18 +208,17 @@ class Requests(object):
 
     #/************************************************************************/
     @staticmethod
-    def default_cache():
-        return File.cache()   
-
-    #/************************************************************************/
-    @staticmethod
-    def build_cache(url, cache_store):
+    def build_cache(url, cache_store=None):
+        if cache_store in (None,''):
+            cache_store = './'
+        # elif cache_store in (None,'default'):
+        #    cache_store = File.default_cache()
         pathname = url.encode('utf-8')
         try:
             pathname = hashlib.md5(pathname).hexdigest()
         except:
             pathname = pathname.hex()
-        return osp.join(cache_store or './', pathname)
+        return osp.join(cache_store, pathname)
 
     #/************************************************************************/
     @staticmethod
@@ -317,60 +407,136 @@ class Requests(object):
     
 
 #==============================================================================
+#%% Class Content
+        
+class Content(object):
+   
+    #/************************************************************************/
+    @staticmethod
+    def from_url(urlname, **kwargs): # dumb function
+        try:
+            return Requests.read_url(urlname, **kwargs)
+        except:
+            raise IOError("Wrong request for data from URL '%s'" % urlname) 
+
+    #/************************************************************************/
+    @staticmethod
+    def from_zip(file, src=None, **kwargs): # dumb function
+        try:
+            assert file is None or isinstance(file, string_types)
+        except:
+            raise TypeError("Wrong type for file parameter '%s' - must be a string" % file)
+        try:
+            assert src is None or isinstance(src, string_types)
+        except:
+            raise TypeError("Wrong type for data source parameter '%s' - must be a string" % src)
+        if src is None:
+            src, file = file, None
+        if zipfile.is_zipfile(src) or any([src.endswith(p) for p in ['zip', 'gz', 'gzip', 'bz2'] ]):
+            try:
+                # file = File.unzip(content, namelist=True) 
+                kwargs.update({'open': file}) # when file=None, will read a single file
+                results = File.unzip(src, **kwargs) 
+            except:
+                raise IOError("Impossible unzipping content from zipped file '%s'" % src)   
+        else:
+            results = {src: file}
+        return results if len(results.keys())>1 else list(results.values())[0]        
+    
+    #/************************************************************************/
+    @staticmethod
+    def from_source(file, src=None, **kwargs):
+        """
+        """
+        try:
+            assert file is None or isinstance(file, string_types)
+        except:
+            raise TypeError("Wrong type for file parameter '%s' - must be a string" % file)
+        try:
+            assert src is None or isinstance(src, string_types)
+        except:
+            raise TypeError("Wrong type for data source parameter '%s' - must be a string" % src)
+        if src is None:
+            src, file = file, None
+        if any([src.startswith(p) for p in ['http', 'https', 'ftp'] ]):
+            try:
+                content = Requests.read_url(src, **kwargs)
+            except:
+                raise IOError("Wrong request for data source from URL '%s'" % src) 
+        else:
+            try:
+                assert osp.exists(src) is True
+            except:
+                raise IOError("Data source '%s' not found on disk" % src)  
+            else:
+                content = src
+        # # option 1: opening and parsing files from zipped source to transform
+        # # them into dataframes - 
+        if zipfile.is_zipfile(content) or any([src.endswith(p) for p in ['zip', 'gz', 'gzip', 'bz2'] ]):
+            try:
+                # file = File.unzip(content, namelist=True) 
+                kwargs.update({'open': file}) # when file=None, will read a single file
+                results = File.unzip(content, **kwargs) 
+            except:
+                raise IOError("Impossible unzipping content from zipped file '%s'" % src)   
+        else:
+            results = {file: content}
+        return results if len(results.keys())>1 else list(results.values())[0]        
+
+#==============================================================================
 #%% Class Dataframe
     
 class Dataframe(object):
     """Static methods for Input/Output pandas dataframe processing, e.f. writing
     into a table.
     """
-
-    #/************************************************************************/
-    @staticmethod
-    def out_date(df, column, ofmt=None, ifmt=None): # ofmt='%d/%m/%Y', ifmt='%d-%m-%Y %H:%M')
-        """Cast the column of a dataframe into datetime.
-        """
-        try:
-            assert column in df.columns
-        except:
-            raise IOError("Wrong input column - must be in the dataframe")
-        try:
-            assert (ofmt is None or isinstance(ofmt, string_types)) and     \
-                isinstance(ifmt, string_types) 
-        except:
-            raise TypeError("Wrong format for input date templates")
-        if ifmt in (None,'') :
-            kwargs = {'infer_datetime_format': True}  
-        else:
-            kwargs = {}
-        if ofmt in (None,'') or ofmt == '':
-            return df[column].astype(str)    
-        else:            
-            try:
-                f = lambda s: datetime.strptime(s, ifmt, **kwargs).strftime(ofmt)
-                return df[column].astype(str).apply(f)
-            except:
-                return df[column].astype(str)    
                     
     #/************************************************************************/
     @staticmethod
-    def out_cast(df, column, cast):
-        """Cast the column of a dataframe into special format, excluding datetime.
+    def cast(df, column, otype=None, ofmt=None, ifmt=None):
+        """Cast the column of a dataframe into special type or date format.
+        
+            >>> dfnew = Dataframe.cast(df, column, otype=None, ofmt=None, ifmt=None)
         """
         try:
             assert column in df.columns
         except:
             raise IOError("Wrong input column - must be in the dataframe")
         try:
-            assert isinstance(cast, type) is True
+            assert otype is None or (ofmt is None and ifmt is None)
+        except:
+            raise IOError("Incompatible option OTYPE with IFMT and OFMT")
+        try:
+            assert (otype is None or isinstance(otype, type) is True)
         except:
             raise TypeError("Wrong format for input cast type")
-        if cast == df[column].dtype:
-            return df[column]
+        try:
+            assert (ofmt is None or isinstance(ofmt, string_types))     \
+                and (ifmt is None or isinstance(ifmt, string_types))
+        except:
+            raise TypeError("Wrong format for input date templates")
+        if otype is not None:
+            if otype == df[column].dtype:
+                return df[column]
+            else:
+                try:
+                    return df[column].astype(otype)
+                except:
+                    return df[column].astype(object)
         else:
-            try:
-                return df[column].astype(cast)
-            except:
-                return df[column].astype(object)
+             # ofmt='%d/%m/%Y', ifmt='%d-%m-%Y %H:%M'
+            if ifmt in (None,'') :
+                kwargs = {'infer_datetime_format': True}  
+            else:
+                kwargs = {}
+            if ofmt in (None,'') or ofmt == '':
+                return df[column].astype(str)    
+            else:            
+                try:
+                    f = lambda s: datetime.strptime(s, ifmt, **kwargs).strftime(ofmt)
+                    return df[column].astype(str).apply(f)
+                except:
+                    return df[column].astype(str)    
                 
     #/************************************************************************/
     @staticmethod
@@ -689,72 +855,66 @@ class Dataframe(object):
     
     #/************************************************************************/
     @staticmethod
-    def from_source(src, file=None, **kwargs):
+    def from_source(file, src=None, **kwargs):
         """
         """
-        try:
-            assert src is None or isinstance(src, string_types)
-        except:
-            raise TypeError("Wrong type for data source parameter '%s' - must be a string" % src)
-        try:
-            assert file is None or isinstance(file, string_types)
-        except:
-            raise TypeError("Wrong type for file parameter '%s' - must be a string" % file)
-        if src is None:
-            src, file = file, None
-        if any([src.startswith(p) for p in ['http', 'https', 'ftp'] ]):
-            try:
-                data = Requests.read_url(src, **kwargs)
-            except:
-                raise IOError("Wrong request for data source from URL '%s'" % src) 
-        else:
-            try:
-                assert File.file_exists(src) is True
-            except:
-                raise IOError("Data source '%s' not found on disk" % src)  
-            else:
-                data = src
-        #  # option 1: opening and parsing files from zipped source to transform
-        # # them into dataframes - 
+        # try:
+        #     assert src is None or isinstance(src, string_types)
+        # except:
+        #     raise TypeError("Wrong type for data source parameter '%s' - must be a string" % src)
+        # try:
+        #     assert file is None or isinstance(file, string_types)
+        # except:
+        #     raise TypeError("Wrong type for file parameter '%s' - must be a string" % file)
+        # if src is None:
+        #     src, file = file, None
+        # if any([src.startswith(p) for p in ['http', 'https', 'ftp'] ]):
+        #     try:
+        #         data = Requests.read_url(src, **kwargs)
+        #     except:
+        #         raise IOError("Wrong request for data source from URL '%s'" % src) 
+        # else:
+        #     try:
+        #         assert osp.exists(src) is True
+        #     except:
+        #         raise IOError("Data source '%s' not found on disk" % src)  
+        #     else:
+        #         data = src
+        ## transforming files in zipped source directly into dataframe while
+        ## unziping with from_zip
         # if zipfile.is_zipfile(data) or any([src.endswith(p) for p in ['zip', 'gz', 'gzip', 'bz2'] ]):
         #     try:
-        #         # file = File.unzip(data, namelist=True) 
-        #         kwargs.update({'open': file}) # when file=None, will read a single file
-        #         unzipped = File.unzip(data, **kwargs) 
+        #         return Dataframe.from_zip(data, file, **kwargs)
         #     except:
         #         raise IOError("Impossible unzipping data from zipped file '%s'" % src)   
         # else:
-        #     unzipped = {file: data}
-        # results = {}
-        # for file, data in unzipped.items():
+        #     try:    fmt = os.path.splitext(src)[-1].replace('.','')
+        #     except: pass
+        #     else:   kwargs.update({'fmt':fmt, 'all_fmt': False})
         #     try:
-        #         fmt = os.path.splitext(file)[-1].replace('.','')
+        #         return Dataframe.from_data(data, **kwargs)
         #     except:
-        #         pass
-        #     else:
-        #         kwargs.update({'fmt':fmt, 'all_fmt': False})
-        #     try:
-        #         results.update({file: Dataframe.from_data(data, **kwargs)})
-        #     except:
-        #         raise IOError("Wrong formatting of source data into dataframe") 
-        # return results if len(results.keys())>1 else list(results.values())[0]
-        #option 2: transforming files in zipped source directly into dataframe 
-        #while unziping with from_zip
-        if zipfile.is_zipfile(data) or any([src.endswith(p) for p in ['zip', 'gz', 'gzip', 'bz2'] ]):
+        #         raise IOError("Wrong formatting of source data into dataframe")             
+        # fetching opening and parsing files from source to transform them into 
+        # dataframes             
+        content = Content.from_source(file, src=src, **kwargs)
+        if not isinstance(content,Mapping):
+            content = {file: content}
+        results = {}
+        for file, data in content.items():
             try:
-                return Dataframe.from_zip(data, file, **kwargs)
+                fmt = os.path.splitext(file)[-1].replace('.','')
             except:
-                raise IOError("Impossible unzipping data from zipped file '%s'" % src)   
-        else:
-            try:    fmt = os.path.splitext(src)[-1].replace('.','')
-            except: pass
-            else:   kwargs.update({'fmt':fmt, 'all_fmt': False})
+                pass
+            else:
+                kwargs.update({'fmt':fmt, 'all_fmt': False})
             try:
-                return Dataframe.from_data(data, **kwargs)
+                results.update({file: Dataframe.from_data(data, **kwargs)})
             except:
-                raise IOError("Wrong formatting of source data into dataframe")             
+                raise IOError("Wrong formatting of source data into dataframe") 
+        return results if len(results.keys())>1 else list(results.values())[0]
         
-
+ 
 #==============================================================================
 #%% Class Json
 

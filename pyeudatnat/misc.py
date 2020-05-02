@@ -53,6 +53,7 @@ else:
         import dateutil.parser 
 
 import numpy as np
+import pandas as pd
 
 try:
     import zipfile
@@ -88,11 +89,224 @@ class Miscellaneous(object):
         [kw.pop(key) for key in keys]
         return kw
 
+    #/************************************************************************/
+    @staticmethod
+    def instance_update(instance, flag, args, **kwargs):   
+        """Update or retrieve an instance (field) of the data class through the
+        parameters passed in kwargs.
+        
+            >>> res = Type.instance_update(instance, flag, args, **kwargs)
+        
+        Arguments
+        ---------
+        instance : object
+            instance of a class with appropriated fields (eg. 'self' is passed).
+        flag : bool
+            flag set to `True` when the given instance(s) is (are) updated from the 
+            parameters passed in kwargs when the parameters are not `None`, `False` 
+            when they are retrieved from `not None` instance(s);
+        args : dict
+            provide for each key set in kwargs, the name of the instance to consider.
+            
+        Keyword Arguments
+        -----------------        
+        kwargs : dict
+            dictionary with values used to set/retrieve instances in/from the data.
+        
+        Returns
+        -------
+        res : dict
+        
+        Note
+        ----
+        This is equivalent to perform:
+        
+            >>> key = args.keys()[i]
+            >>> val = kwargs.pop(key,None)
+            >>> if flag is False and val is None:       
+            ...     val = getattr(self,args[key])
+            >>> if flag is True and val is not None:    
+            ...     setattr(self,args[key]) = val
+            >>> res = val
+            
+        for all keys :literal:`i` of :literal:`args`.
+        
+        Examples
+        --------
+
+            >>> param = { my_key: 'name_of_my_instance' }
+            >>> kwarg = { my_key: my_not_None_value }
+        
+        Set the :data:`name_of_my_instance` attribute of the class to :data:`my_value` and return 
+        :data:`my_not_None_value`:
+        
+        >>> res = Type.instance_update(instance, True, param, **kwarg)
+    
+        Retrieve :data:`name_of_my_instance` attribute:
+    
+        >>> res = Type.instance_update(instance, False, param, **kwarg)
+        """
+        if not isinstance(args,dict):
+            raise IOError("Dictionary requested in input")
+        res = {} # res = []
+        for key in args.keys():     # while not(_isonlyNone(args))
+            attr = args.pop(key)
+            if not(isinstance(key,str) and isinstance(attr,str)):
+                raise IOError("String keys and values expected")
+            elif not hasattr(instance,attr): # getattr(instance,attr)
+                raise IOError("Unrecognised attribute")
+            val = kwargs.pop(key,None)
+            if flag is False and val is None:
+                val =  instance.__getattribute__(attr)
+            elif flag is True and val is not None:
+                instance.__setattr__(attr, val)
+            res.update({key:val}) # res.append(val)
+        return res
+
+    #/************************************************************************/
+    @staticmethod
+    def is_subclass(obj, aclass):
+        """Check whether an object is an instance or a subclass of a 
+        given class.
+        
+            >>> res = Miscellaneous.is_subclass(obj, cls))
+        """
+        if not isinstance(aclass, type):
+            raise TypeError("is_subclass() arg 2 must be a class")
+        if isinstance(obj, type):
+            return issubclass(obj, aclass)
+        else:
+            try:
+                return issubclass(obj.__class__, aclass)
+            except:
+                raise IOError("Unrecognised is_subclass() arg 1")
+                
+    #/************************************************************************/
+    @staticmethod
+    def flat(*structure):
+        """Flatten a structure recursively.
+        
+            >>> res = Miscellaneous.flat(*structure)
+        """
+        for x in structure:
+            if hasattr(x, '__iter__'):
+                for y in Type.flat(*x):
+                    yield y
+            else:
+                yield x
+
+    #/************************************************************************/
+    @staticmethod
+    def to_format(data, outform, inform=None):
+        """Perform structure conversions from/to: :class:`list`, :class:`tuple`, 
+        :class:`array` and :class:`dict`\ .
+        
+            >>> output = Miscellaneous.to_format(data, outform, inform=None)
+    
+        Arguments
+        ---------
+        outform : str
+            string specifying the desired output format; it can any string in 
+            :literal:`['array', 'dict', 'list', 'tuple']`\ .
+        """
+        if inform==outform:                                 return data
+        def tolist(data):
+            if data is None:                                return None
+            elif isinstance(data,list):                     return data
+            elif isinstance(data,tuple):                    return list(data)
+            elif isinstance(data,dict):                     return data.values()
+            elif isinstance(data,np.ndarray):               return list(data)
+            elif isinstance(data,pd.Series):                return data.to_list()
+            elif isinstance(data,pd.DataFrame):             return list(data.values)
+            else:                                           return data#raise IOError
+        def totuple(data):
+            if data is None:                                return None
+            elif isinstance(data,tuple):                    return data
+            elif isinstance(data,list):                     return tuple(data)
+            elif isinstance(data,dict):                     return tuple(data.values())
+            elif isinstance(data,np.ndarray):               return tuple(list(data))
+            elif isinstance(data,pd.Series):                return tuple(data.to_list())
+            elif isinstance(data,pd.DataFrame):             return tuple(data.values)
+            else:                                           return data#raise IOError
+        def toarray(data):
+            if data is None:                                return None
+            if isinstance(data,dict):
+                if len(data)==1:                    data = data.values()[0]
+                else:                               data = data.values()
+            if isinstance(data,(list,tuple)):       data = np.asarray(data)
+            if isinstance(data,np.ndarray):                 return data
+            elif isinstance(data,(pd.Series,pd.DataFrame)):   
+                                                            return data.to_numpy()
+            else:                                           return data#raise IOError
+        def todict(data):
+            if data is None:                                return None
+            elif isinstance(data,dict):
+                newkeys = range(len(data))
+                if data.keys() == newkeys:                  return data
+                else:           return dict(zip(newkeys, data.values()))       
+            elif isinstance(data,np.ndarray):
+                if data.ndim==2:                            return dict([(0,data)])
+                else:        return dict([(i,data[i]) for i in range(0,len(data))])
+            elif isinstance(data,(pd.Series,pd.DataFrame)):   
+                                                            return data.to_dict()
+            elif not isinstance(data,(list,tuple)):         return data 
+            else:            return dict([(i,data[i]) for i in range(0,len(data))])
+        formatf = {'array': toarray,  'dict': todict,             \
+                    'list': tolist,   'tuple': totuple            \
+                    }
+        return formatf[outform](data)
+
+    #/************************************************************************/
+    @staticmethod
+    def flatten(structure, key="", path="", flattened=None, indexed=False):
+        """Flatten any structure of any type (list, dict, tuple) and any depth in
+        a recursive manner.
+    
+            >>> res = Type.flatten(structure, key="", path="", flattened=None)
+        """
+        if indexed is False:
+            if flattened is None:                   flattened = []
+            elif not isinstance(flattened,list):    flattened = format2(flattened,'list')
+            for st in structure:
+                # if isinstance(st, (list, tuple)):
+                if hasattr(st, "__iter__") and not isinstance(st, str):
+                    flattened.extend(flatten(st))
+                else:
+                    flattened.append(st)
+        else:
+            if flattened is None:                   flattened = {}
+            if type(structure) not in(dict, list):
+                flattened[((path + "_") if path else "") + key] = structure
+            elif isinstance(structure, list):
+                for i, item in enumerate(structure):
+                    flatten(item, "%d" % i, path + "_" + key, flattened)
+            else:
+                for new_key, value in structure.items():
+                    flatten(value, str(new_key), path + "_" + key, flattened)
+        return flattened
+
+    #/************************************************************************/
+    @staticmethod
+    def uniqify(stru, key="", path="", flattened=None, indexed=False):
+        """'Uniqify' and flatten the values of a structure of any type (list, dict,
+        tuple) and any depth in a recursive manner.
+    
+            >>> res = uniqify(structure, key="", path="", flattened=None)
+        """
+        if indexed is False:
+            return flatten(stru, key=key, path=path, \
+                                   flattened=flattened, indexed=False)
+        else:
+            stru = flatten(stru, key=key, path=path, \
+                                   flattened=flattened, indexed=True)
+            return list(set(stru.values()))
+
 
 #==============================================================================
 #%% Class Type
 
 class Type(object):   
+    
     
     # Variables of useful types conversions
     __PYTYPES = {'object':'object', \
@@ -256,7 +470,85 @@ class Type(object):
     pytname2pdt = pytname2npt
     """Conversion method Python type name -> Pandas types list.
     """
-   
+    
+    #/************************************************************************/
+    @staticmethod
+    def is_type(obj, str_cls):
+        """Determine whether an object as an instance is of a certain type defined 
+        by a class or a class name.        
+        """
+        if not isinstance(aclass, (type,string_types)):
+            raise TypeError("is_type() arg 2 must be a class or a class name")
+        try:
+            if isinstance(aclass, type):
+                return isinstance(obj, aclass) or issubclass(obj.__class__, aclass)
+            else: # isinstance(aclass, string_types)
+                return obj.__class__.__name__ == aclass
+        except:
+            raise IOError("Unrecognised is_type() arg 1")
+        
+    #/************************************************************************/
+    @staticmethod
+    def typename(obj): 
+        """Return the class name of an object given as an instance: nothing else 
+        than :literal:`obj.__class__.__name__`\ .  
+    
+            >>> name = Type.typename(obj)     
+        """
+        return obj.__class__.__name__
+     
+    #/************************************************************************/
+    @staticmethod
+    def subdtypes(dtype):
+        """
+        Example
+        -------
+        
+            >>> Type.subdtypes(np.generic)
+        """
+        subs = dtype.__subclasses__()
+        if not subs:
+            return dtype
+        return [dtype, [Type.subdtypes(dt) for dt in subs]]
+
+
+    #/************************************************************************/
+    @staticmethod
+    def to_type(data, dtype, view=None):
+        """Perform type conversions of various structures (either :class:`list`, 
+        :class:`tuple`, :class:`array` or :class:`dict`).
+        
+            >>> output = Type.to_type(data, dtype, view=None)
+    
+        Arguments
+        ---------
+        dtype : str
+            string indicating the desired output type; this can be any string.
+        """
+        def totypearray(x): # dtype, kwargs defined 'outside'
+            if x.dtype=='object':                           return x
+            elif dtype is not None and x.dtype!=dtype:      return x.astype(dtype)
+            elif view is not None and x.dtype!=view:        return x.view(dtype=view)
+            else:                                           return x       
+        def totype(x): # dtype, kwargs defined 'outside'
+            if np.isscalar(x):
+                if any([re.search(t,dtype) for t in ('int8','int16')]): return int(x)
+                # elif re.search('int32', dtype):                         return long(x)
+                elif re.search('float', dtype):                         return float(x)
+            elif isinstance(x,np.ndarray):
+                return totypearray(x)
+            elif isinstance(x,(dict,tuple,list)): # recursive call
+                return Type.to_type(x, dtype, view)
+            else:
+                return x
+        if isinstance(data,(np.ndarray,pd.DataFrame,pd.Series)):
+            return totypearray(data)
+        elif isinstance(data,dict):
+            return dict(zip(data.keys(),map(totype, data.values())))
+        elif isinstance(data,(list,tuple)):
+            return map(totype, data)
+        else:
+            return data
     
 #==============================================================================
 #%% Class Datetime
@@ -580,11 +872,14 @@ class Datetime(object):
                 for unit in cls.__DATETIME_ITEMS:
                     pattern = r'(.*)\d*\.*\d*\s*' + unit + r'(\d|\s|$)+(.*)' # raw string pattern
                     x = re.search(pattern,arg)                
-                    if x is None:       continue
+                    if x is None:  continue
                     elif unit in cls.DATETIME_KWARGS.keys():
                         unit = cls.DATETIME_KWARGS[unit]
                     if d_datetime.get(unit) is None:    d_datetime[unit] = 0
-                    d_datetime[unit] += eval(re.match('.*?([.0-9]+\s*)$',x.group(1)).group(1))
+                    x = re.match('.*?([.0-9]+\s*)$',x.group(1))
+                    if x is None:  continue
+                    else: 
+                        d_datetime[unit] += eval(x.group(1))
         elif isinstance(arg,Mapping):
             for unit in cls.__DATETIME_ITEMS:
                 if unit not in arg:         continue
@@ -606,7 +901,7 @@ class Datetime(object):
             try:    return _datetime.isocalendar()
             except: raise IOError("Isocalendar format not implemented") 
         elif fmt:
-            if not any([re.search(s,fmt) for s in ('%Y','%m','%d','%H','%M','%S')]):
+            if not(isinstance(fmt,bool) or any([re.search(s,fmt) for s in ('%Y','%m','%d','%H','%M','%S')])):
                 raise IOError("String format is not a standard datetime format")
             try:    return _datetime.ctime() if fmt is True else _datetime.strftime(fmt) 
             except: raise IOError("Format not implemented") 
@@ -710,7 +1005,7 @@ class Datetime(object):
         fmt = kwargs.pop('fmt',False)
         if fmt=='timedelta':            fmt, tdelta = None, True
         elif fmt=='dict':               fmt, dict_ = None, True
-        elif fmt=='str':                fmt, str_ = None, True#analysis:ignore
+        elif fmt=='str':                fmt, _ = None, True#analysis:ignore
         elif not isinstance(fmt,bool):  
             raise   TypeError("Wrong timing format")
         if span in ((),None):           span = kwargs 
@@ -757,7 +1052,7 @@ class Datetime(object):
                 return span               
         elif dict_:
             return d_span
-        else: #if str_:
+        else: #if _:
             return span
 
     #/************************************************************************/
@@ -1315,18 +1610,6 @@ class File(object):
         finally:
             return fileinfo
 
-    #/************************************************************************/
-    @staticmethod
-    def cache():
-        platform = sys.platform
-        if platform.startswith("win"): # windows
-            basedir = os.getenv("LOCALAPPDATA",os.getenv("APPDATA",osp.expanduser("~")))
-        elif platform.startswith("darwin"): # Mac OS
-            basedir = osp.expanduser("~/Library/Caches")
-        else:
-            basedir = os.getenv("XDG_CACHE_HOME",osp.expanduser("~/.cache"))
-        return osp.join(basedir, PACKNAME)    
-
     #/****************************************************************************/
     def writable(filepath):
         """Determine if a temporary file can be written in the same directory as a 
@@ -1419,70 +1702,3 @@ class File(object):
         else:
             if ISWIN and filepath[-1]==':':     filepath+='\\'
             return osp.realpath(filepath)
-    
-    #/************************************************************************/
-    @staticmethod
-    def unzip(file, **kwargs):
-        try:
-            assert zipfile.is_zipfile(file)
-        except:
-            raise TypeError("Zip file '%s' not recognised" % file)
-        cache = kwargs.pop('cache', File.cache())
-        operators = [op for op in ['open', 'extract', 'extractall', 'getinfo', 'namelist', 'read', 'infolist'] \
-                     if op in kwargs.keys()] 
-        try:
-            assert operators in ([],[None]) or sum([1 for op in operators]) == 1
-        except:
-            raise IOError("Only one operation supported per call")
-        else:
-            if operators in ([],[None]):
-                operator = 'extractall'
-                kwargs.update({operator: cache})
-            else:
-                operator = operators[0] 
-        members, path = None, None
-        if operator in ('open', 'extract', 'getinfo', 'read'):
-            members = kwargs.pop(operator, None)
-        elif operator == 'extractall':
-            path = kwargs.pop('extractall', None)
-        else: # elif operator in ('infolist','namelist'):
-            try:
-                assert kwargs.get(operator) not in (False,None)
-            except:
-                raise IOError("No operation parsed")
-        if operator.startswith('extract'):
-            warnings.warn("\n! Data extracted from zip file will be physically stored on local disk !")
-        if isinstance(members,string_types):
-            members = [members,]
-        with zipfile.ZipFile(file) as zf:
-            namelist, infolist = zf.namelist(), zf.infolist() 
-            _namelist = [osp.basename(n) for n in namelist]
-            #if operator in  ('infolist','namelist'):
-            #        return getattr(zf, operator)()
-            if operator == 'namelist':
-                return namelist if len(namelist)>1 else namelist[0]
-            elif operator == 'infolist':
-                return infolist if len(infolist)>1 else infolist[0]
-            elif operator == 'extractall':                
-                return zf.extractall(path=path)   
-            if members is None and len(namelist)==1:
-                members = namelist
-            elif members is not None:
-                for i in reversed(range(len(members))):
-                    m = members[i]
-                    try:
-                        assert m in namelist
-                    except:
-                        try:
-                            assert m in _namelist
-                        except:
-                            warnings.warn("\n! File '%s' not found in source zip !" % m)
-                            members.pop(i)
-                        else:
-                            members[i] = namelist[_namelist.index(m)]
-            # now: operator in ('extract', 'getinfo', 'read')
-            if members in ([],None):
-                raise IOError("Impossible to retrieve member file(s) from zipped data")
-            results = {m: getattr(zf, operator)(m) for m in members}
-        return results
-        # raise IOError("Operation '%s' failed" % operator)
