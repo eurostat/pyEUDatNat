@@ -62,18 +62,16 @@ except:
 else:
     _is_zipfile_installed = True
 
-from pyeudatnat import PACKNAME
-
-
-#%% Global var
-
 ISWIN           = os.name=='nt' # sys.platform[0:3].lower()=='win'
 
 
-#==============================================================================
-#%% Class Miscellaneous
+#%% Core functions/classes
 
-class Miscellaneous(object):
+#==============================================================================
+# Class Object
+#==============================================================================
+
+class Object(object):
     
     #/************************************************************************/
     @staticmethod
@@ -95,7 +93,7 @@ class Miscellaneous(object):
         """Update or retrieve an instance (field) of the data class through the
         parameters passed in kwargs.
         
-            >>> res = Type.instance_update(instance, flag, args, **kwargs)
+            >>> res = Object.instance_update(instance, flag, args, **kwargs)
         
         Arguments
         ---------
@@ -165,35 +163,47 @@ class Miscellaneous(object):
 
     #/************************************************************************/
     @staticmethod
-    def is_subclass(obj, aclass):
+    def is_subclass(obj, cls):
         """Check whether an object is an instance or a subclass of a 
         given class.
         
-            >>> res = Miscellaneous.is_subclass(obj, cls))
+            >>> res = Object.is_subclass(obj, cls))
         """
-        if not isinstance(aclass, type):
-            raise TypeError("is_subclass() arg 2 must be a class")
+        try:
+            assert (isinstance(cls, Sequence) and all([isinstance(c, type) for c in cls])) \
+                or isinstance(cls, type)
+        except:
+            raise TypeError("is_subclass() arg 2 must be a (list of) class(es)")
+        if isinstance(cls, type):
+            cls = [cls,]
         if isinstance(obj, type):
-            return issubclass(obj, aclass)
+            return any([issubclass(obj, c) for c in cls])
         else:
             try:
-                return issubclass(obj.__class__, aclass)
+                return any([issubclass(obj.__class__, c) for c in cls])
             except:
                 raise IOError("Unrecognised is_subclass() arg 1")
+
+#==============================================================================
+# Class Structure
+#==============================================================================
+
+class Structure(object):
                 
     #/************************************************************************/
     @staticmethod
-    def flat(*structure):
+    def flatten(*obj):
         """Flatten a structure recursively.
         
-            >>> res = Miscellaneous.flat(*structure)
+            >>> res = Structure.flatten(*obj)
         """
-        for x in structure:
-            if hasattr(x, '__iter__'):
-                for y in Type.flat(*x):
-                    yield y
+        for item in obj:
+            if hasattr(item, '__iter__') and not isinstance(item, string_types): # 
+            #if isinstance(item, (Sequence, Mapping, set))  and not isinstance(item, string_types):
+                yield from Structure.flatten(*item)
+                # for y in Structure.flatten(*item):    yield y
             else:
-                yield x
+                yield item
 
     #/************************************************************************/
     @staticmethod
@@ -201,7 +211,7 @@ class Miscellaneous(object):
         """Perform structure conversions from/to: :class:`list`, :class:`tuple`, 
         :class:`array` and :class:`dict`\ .
         
-            >>> output = Miscellaneous.to_format(data, outform, inform=None)
+            >>> output = Structure.to_format(data, outform, inform=None)
     
         Arguments
         ---------
@@ -258,19 +268,19 @@ class Miscellaneous(object):
 
     #/************************************************************************/
     @staticmethod
-    def flatten(structure, key="", path="", flattened=None, indexed=False):
+    def flat_format(structure, key="", path="", flattened=None, indexed=False):
         """Flatten any structure of any type (list, dict, tuple) and any depth in
         a recursive manner.
     
-            >>> res = Type.flatten(structure, key="", path="", flattened=None)
+            >>> res = Structure.flat_format(structure, key="", path="", flattened=None)
         """
         if indexed is False:
             if flattened is None:                   flattened = []
-            elif not isinstance(flattened,list):    flattened = format2(flattened,'list')
+            elif not isinstance(flattened,list):    flattened = Structure.to_format(flattened,'list')
             for st in structure:
                 # if isinstance(st, (list, tuple)):
                 if hasattr(st, "__iter__") and not isinstance(st, str):
-                    flattened.extend(flatten(st))
+                    flattened.extend(Structure.flatten(st))
                 else:
                     flattened.append(st)
         else:
@@ -279,31 +289,77 @@ class Miscellaneous(object):
                 flattened[((path + "_") if path else "") + key] = structure
             elif isinstance(structure, list):
                 for i, item in enumerate(structure):
-                    flatten(item, "%d" % i, path + "_" + key, flattened)
+                    Structure.flat_format(item, "%d" % i, path + "_" + key, flattened)
             else:
                 for new_key, value in structure.items():
-                    flatten(value, str(new_key), path + "_" + key, flattened)
+                    Structure.flat_format(value, str(new_key), path + "_" + key, flattened)
         return flattened
 
     #/************************************************************************/
     @staticmethod
-    def uniqify(stru, key="", path="", flattened=None, indexed=False):
+    def uniqify(obj, key="", path="", flattened=None, indexed=False):
         """'Uniqify' and flatten the values of a structure of any type (list, dict,
         tuple) and any depth in a recursive manner.
     
-            >>> res = uniqify(structure, key="", path="", flattened=None)
+            >>> res = Structure.uniqify(obj, key="", path="", flattened=None)
         """
-        if indexed is False:
-            return flatten(stru, key=key, path=path, \
-                                   flattened=flattened, indexed=False)
+        obj =  Structure.flat_format(obj, key = key, path = path, 
+                                     flattened = flattened, indexed = indexed)
+        return obj if indexed is False else list(set(obj.values()))
+
+
+    #/************************************************************************/
+    @staticmethod
+    def uniq_list(lst, order=False):
+        if order is False:
+            return list(set(lst))
         else:
-            stru = flatten(stru, key=key, path=path, \
-                                   flattened=flattened, indexed=True)
-            return list(set(stru.values()))
+            # return functools.reduce(lambda l, x: l.append(x) or l if x not in l else l, lst, [])
+            # return [x for i, x in enumerate(lst) if i == lst.index(x)]
+            return [x for i, x in enumerate(lst) if x not in lst[:i]]# unique, ordered
+
+    #/************************************************************************/
+    @staticmethod
+    def uniq_items(*arg, items={}, order=False):
+        """
+        """
+        if len(arg)==1:
+            arg = arg[0]
+        try:
+            assert isinstance(items,Mapping) or isinstance(items,Sequence)
+        except:
+            raise TypeError("Wrong type for item(s)")
+        if isinstance(items,Mapping):
+            allkvs = Structure.uniq_list(Structure.flatten(items.items()))
+            allvals = Structure.uniq_list(Structure.flatten(items.values()))
+        else:
+            allvals = allkvs = Structure.uniq_list(Structure.flatten(items))
+        try:
+            assert (isinstance(arg,string_types) and arg in allkvs)    \
+                or (isinstance(arg,Sequence) and all([a in allkvs for a in arg]))
+        except:
+            res = list(set(arg).intersection(set(allkvs)))
+            try:
+                assert res not in (None,[])
+            except:
+                raise IOError("Item(s) not recognised")
+            else:
+                warnings.warn("\n! Item(s) not  all recognised !")
+        else:
+            res = [arg,] if isinstance(arg,string_types) else list(arg)
+        for i, a in enumerate(res):
+            if a in allvals:    continue
+            res.pop(i)
+            try:        a = items[a]
+            except:     pass
+            res.insert(i, list(a)[0] if isinstance(a,(tuple,list,set)) else a)
+        res = Structure.uniq_list(res, order = order)
+        return res if len(res)>1 else res[0]
 
 
 #==============================================================================
-#%% Class Type
+# Class Type
+#==============================================================================
 
 class Type(object):   
     
@@ -551,8 +607,9 @@ class Type(object):
             return data
     
 #==============================================================================
-#%% Class Datetime
-    
+# Class Datetime
+#==============================================================================
+ 
 class Datetime(object):
     """Static and class methods for datetime objects manipulation.
     """
@@ -821,7 +878,7 @@ class Datetime(object):
         >>> dt = datetime.datetime.now()
         >>> dt
             datetime.datetime(2014, 8, 18, 14, 56, 17, 821000)
-        >>> print dt
+        >>> print(dt)
             2014-08-18 14:56:17.821000
         >>> Datetime.datetime(dt, fmt='iso')
             '2014-08-18T14:56:17'
@@ -1164,7 +1221,7 @@ class Datetime(object):
         >>> until = since + datetime.timedelta(1)
         >>> print(until)
             2014-08-20 16:27:41.629000
-        >>> print Datetime.since(until=until, span=span)
+        >>> print(Datetime.since(until=until, span=span))
             {{'second': 41, 'hour': 16, 'year': 2014, 'day': 20, 'minute': 27, 'month': 8}}
         >>> since_c = Datetime.since(until=until, span=span, fmt='datetime')
         >>> print(since_c) # this is: datetime.datetime(2014, 8, 19, 16, 23, 27)
@@ -1177,7 +1234,7 @@ class Datetime(object):
         Again, we can ensure precision by including the microseconds in the calculation:
 
         >>> since_c = Datetime.since(until=until, span=span, fmt='datetime', no_micro_secs=False)
-        >>> print since_c # this is datetime.datetime(2014, 8, 20, 16, 27, 41, 629000)
+        >>> print(since_c) # this is datetime.datetime(2014, 8, 20, 16, 27, 41, 629000)
             2014-08-19 16:27:41.629000
         >>> since_c == since 
             True
@@ -1429,7 +1486,8 @@ class Datetime(object):
 
  
 #==============================================================================
-#%% Class File
+# Class File
+#==============================================================================
     
 class File(object):
     """Static methods for Input/Output file processing.
@@ -1487,8 +1545,8 @@ class File(object):
         from fnmatch import filter
         results = []
         for root, dirs, files in os.walk(directory):
-            #print files
-            #print fnmatch.filter(files, pattern)
+            #print(files)
+            #print(fnmatch.filter(files, pattern))
             results.extend(osp.join(root, f) for f in filter(files, pattern))
         return results
 
@@ -1609,23 +1667,6 @@ class File(object):
             fileinfo['ownername'] = ownername
         finally:
             return fileinfo
-
-    #/****************************************************************************/
-    def writable(filepath):
-        """Determine if a temporary file can be written in the same directory as a 
-        given file.
-        
-            >>> resp = File.writable(filepath)
-        """
-        if not osp.isdir(filepath):
-            filepath = osp.dirname(filepath)
-        try:
-            from tempfile import TemporaryFile
-            tmp = TemporaryFile(dir=filepath) # can we write a temp file there...?
-        except: return False
-        else:
-            del tmp
-            return True
 
     #/************************************************************************/
     @staticmethod
