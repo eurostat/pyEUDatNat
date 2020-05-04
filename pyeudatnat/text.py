@@ -55,9 +55,6 @@ else:
 
 from pyeudatnat import COUNTRIES#analysis:ignore
 
-
-#%% Global vars             
-
 LANGS           = { ## alpha-3/ISO 639-2 codes
                     'sq': 'albanian',
                     'ar': 'arabic',
@@ -113,8 +110,11 @@ LANGS           = { ## alpha-3/ISO 639-2 codes
 DEFLANG         = 'en'
   
   
+#%% Core functions/classes
+
 #==============================================================================
-#%% Method isoLang
+# Method isoLang
+#==============================================================================
    
 def isoLang(arg):
     """Given a language or an ISO 639 locale code, return the pair {language,locale}.
@@ -152,7 +152,8 @@ def isoLang(arg):
 
     
 #==============================================================================
-#%% Class Interpret
+# Class Interpret
+#==============================================================================
 
 class Interpret(object):
 
@@ -218,7 +219,8 @@ class Interpret(object):
            
  
 #==============================================================================
-#%%Class TextProcess
+# Class TextProcess
+#==============================================================================
 
 class TextProcess(object):
     """Text handling and string manipulation.
