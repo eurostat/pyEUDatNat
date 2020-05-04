@@ -4,6 +4,16 @@ pyeudatnat
 Basic module for the automated collection and formatting of raw EU data from national authorities using providers metadata.
 ---
 
+<table align="center">
+    <tr> <td align="left"><i>documentation</i></td> <td align="left">available at: ...</td> </tr> 
+    <tr> <td align="left"><i>status</i></td> <td align="left">since 2020 &ndash; <b>in construction</b></td></tr> 
+    <tr> <td align="left"><i>contributors</i></td> 
+    <td align="left" valign="middle">
+<a href="https://github.com/gjacopo"><img src="https://github.com/gjacopo.png" width="40"></a>
+</td> </tr> 
+    <tr> <td align="left"><i>license</i></td> <td align="left"><a href="https://joinup.ec.europa.eu/sites/default/files/eupl1.1.-licence-en_0.pdfEUPL">EUPL</a> </td> </tr> 
+</table>
+
 **Quick install and start**
 
 [![Binder](https://mybinder.org/badge_logo.svg)](http://mybinder.org/v2/gh/eurostat/pyEUDatNat/master?filepath=notebooks)
