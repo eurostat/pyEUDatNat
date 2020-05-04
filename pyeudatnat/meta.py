@@ -211,7 +211,10 @@ class MetaDat(dict):
 class MetaDatNat(MetaDat):
     """Metadata class for national datasets.
     """
-                
+    
+    PROPERTIES = [ 'provider', 'country', 'lang', 'src', 'file', 'path', 'columns', 
+                   'index', 'proj', 'type', 'enc', 'sep', 'date' ]
+    
     #/************************************************************************/
     def __init__(self, *args, **kwargs):
         super(MetaDatNat,self).__init__(*args, **kwargs)
