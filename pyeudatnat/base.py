@@ -31,7 +31,7 @@ level into harmonised format.
 
 import io, sys
 from os import path as osp
-import warnings#analysis:ignore
+import warnings
 
 from collections import Mapping, Sequence
 from six import string_types
@@ -39,28 +39,30 @@ from six import string_types
 from datetime import datetime, timedelta
 from copy import deepcopy
 
-import numpy as np#analysis:ignore
+import numpy as np
 import pandas as pd
 
 from pyeudatnat import PACKPATH, COUNTRIES
 from pyeudatnat.meta import MetaDat, MetaDatNat
-from pyeudatnat.io import Json, Dataframe, Content
+from pyeudatnat.misc import Object
+from pyeudatnat.io import Json, Frame, Buffer
 from pyeudatnat.text import LANGS, Interpret, isoLang
 from pyeudatnat.geo import GeoService, isoCountry
 
 
-#%% Global vars             
+__THISDIR       = osp.dirname(__file__)
 
-__THISDIR         = osp.dirname(__file__)
-
-_INDEX_ALWAYS_AS_ILANG = True # that's actually a debug...that is not a debug anymore!
-_META_ALWAYS_UPDATED = False
+_INDEX_AS_ILANG = True # that actually was a debug...that is not a debug anymore!
+_META_UPDATED   = False
 
 BASETYPE        = {t.__name__: t for t in [type, bool, int, float, str, datetime]}
     
     
+#%% Core functions/classes
+
 #==============================================================================
-#%% Class BaseDatNat
+# Class BaseDatNat
+#==============================================================================
 
 class BaseDatNat(object):
     """Base class used to represent national data sources.
@@ -76,9 +78,12 @@ class BaseDatNat(object):
     def __init__(self, *args, **kwargs):
         # self.__config, self.__metadata = {}, {}
         self.__data = None                # data
-        self.__content = None             # content
+        self.__buffer = None             # content
         self.__columns, self.__index = {}, []
         self.__place, self.__proj = '', None
+        self.__format = None
+        self.__enc, self.__sep = None, None
+        self.__dateformat = None
         try:
             # meta should be initialised in the derived class
             assert self.__metadata not in ({},None)
@@ -106,19 +111,23 @@ class BaseDatNat(object):
         # retrieve input data parameters, e.g. name, location, and format 
         self.enc = kwargs.pop('enc',self.meta.get('enc'))
         self.sep = kwargs.pop('sep',self.meta.get('sep'))        
-        path, fname = kwargs.pop('path',self.meta.get('path') or ''), kwargs.pop('file',self.meta.get('file') or '')
-        if osp.basename(fname) != fname:
-            path, fname = osp.abspath(osp.join(path, osp.dirname(fname))), osp.basename(fname)
-        self.file = None if fname==''                           \
-            else osp.join(path, fname) if path not in (None,'') \
-            else fname
-        self.source = kwargs.pop('source', self.meta.get('source') or None)
+        path, file = kwargs.pop('path',self.meta.get('path') or ''), kwargs.pop('file',self.meta.get('file') or '')
+        # path = osp.abspath(path)
+        self.file = None if file in (None,'') and path in (None,'')         \
+            else (file if path in (None,'')                                 \
+            else (osp.join(path, file) if isinstance(file, string_types)    \
+            else ([osp.join(path, f) for f in file] if isinstance(file, Sequence) \
+            else path)))
+        self.source = kwargs.pop('source', self.meta.get('source') or None) # to avoid ''
+        # retrieve data format, if any
+        self.fmt = kwargs.pop('fmt', self.meta.get('fmt') or None) # to avoid ''
         # retrieve caching arguments
-        self.cache = {'caching':kwargs.pop('caching',False), 'store':None, 'expire':0, 'force':True}
+        self.cache = {'caching':kwargs.pop('caching',False), 
+                      'cache_store':None, 'cache_expire':0, 'cache_force':True}
         if self.cache['caching'] is True:
-            self.cache.update({'store': kwargs.pop('store', ''),
-                               'expire': kwargs.pop('expire', 0),
-                               'force': kwargs.pop('force',False)
+            self.cache.update({'cache_store': kwargs.pop('cache_store', ''),
+                               'cache_expire': kwargs.pop('cache_expire', 0),
+                               'cache_force': kwargs.pop('cache_force',False)
                               })
         # retrieve data year, if any
         self.year = kwargs.pop('year', None)
@@ -126,8 +135,8 @@ class BaseDatNat(object):
         self.dest = kwargs.pop('dest', None)
         # retrieve the input data projection
         self.proj = kwargs.pop('proj', self.meta.get('proj')) # projection system
-        # retrieve a default output name
-        self.date = kwargs.pop('date', self.meta.get('date') or '%d-%m-%Y %H:%M') # input date format
+        # retrieve a default date format
+        self.dfmt = kwargs.pop('dfmt', self.meta.get('dfmt') or '%d-%m-%Y %H:%M') # input date format
         # retrieve columns when already known
         columns = kwargs.pop('columns', None) 
         self.columns = columns or self.meta.get('columns') or []    # header columns
@@ -159,21 +168,21 @@ class BaseDatNat(object):
             pass
         try:        return object.__getattribute__(self, attr) 
         except AttributeError: 
+            raise AttributeError("%s object has no attribute '%s'" % (type(self),attr))
+            # ignore what's next...
             try:
-                # assert attr in self.meta
                 return object.__getattribute__(self, '__' + attr)
             except (AttributeError,AssertionError): 
                 try:
-                    assert False
-                    # return getattr(self.__class__, attr)
-                except AssertionError:
+                    return getattr(self.__class__, attr)
+                except (AttributeError,AssertionError):
                     raise AttributeError("%s object has no attribute '%s'" % (type(self),attr))
 
     #/************************************************************************/
     @property
     def meta(self):
         return self.__metadata # or {}
-    @meta.setter#analysis:ignore
+    @meta.setter
     def meta(self, meta):
         if not (meta is None or isinstance(meta, (MetaDatNat,Mapping))):         
             raise TypeError("Wrong format for country METAdata: '%s' - must be a dictionary" % type(meta))
@@ -182,7 +191,7 @@ class BaseDatNat(object):
     @property
     def config(self):
         return self.__config # or {}
-    @config.setter#analysis:ignore
+    @config.setter
     def config(self, cfg):
         if not (cfg is None or isinstance(cfg, (MetaDat,Mapping))):         
             raise TypeError("Wrong format for CONFIGuration info: '%s' - must be a dictionary" % type(cfg))
@@ -191,7 +200,7 @@ class BaseDatNat(object):
     @property
     def data(self):
         return self.__data # or {}
-    @data.setter#analysis:ignore
+    @data.setter
     def data(self, data):
         if not (data is None or isinstance(data, (Mapping,Sequence, np.ndarray, #pd.arrays.PandasArray,
                                                   pd.Index,pd. Series, pd.DataFrame))):         
@@ -199,20 +208,20 @@ class BaseDatNat(object):
         self.__data = data
 
     @property
-    def content(self):
-        return self.__data # or {}
-    @content.setter#analysis:ignore
-    def content(self, cont):
-        if not (cont is None or isinstance(cont, (Mapping, Sequence, string_types, bytes,
-                                                  # urllib3.response.HTTPResponse, requests.models.Response,
-                                                  io._io.StringIO, io._io.BytesIO))):         
-            raise TypeError("Wrong format for CONTENT: '%s' - must be an array, sequence or dictionary" % type(cont))
-        self.__content = cont
+    def buffer(self):
+        return self.__buffer # or {}
+    @buffer.setter
+    def buffer(self, buff):
+        # if not (buff is None or isinstance(cont, (Mapping, Sequence, string_types, bytes,
+        #                                           # urllib3.response.HTTPResponse, requests.models.Response,
+        #                                           io.StringIO, io.BytesIO, io.TextIOBase))):         
+        #     raise TypeError("Wrong format for CONTENT: '%s' - must be an array, sequence or dictionary" % type(buff))
+        self.__buffer = buff
 
     @property
     def category(self):
         return self.__category # or ''
-    @category.setter#analysis:ignore
+    @category.setter
     def category(self, cat):
         if cat is None or isinstance(cat, (string_types, Mapping)):                          
             pass
@@ -225,7 +234,7 @@ class BaseDatNat(object):
     @property
     def cc(self):
         return self.__cc
-    @cc.setter#analysis:ignore
+    @cc.setter
     def cc(self, cc):
         if cc is None:                          pass
         elif not isinstance(cc, string_types):         
@@ -234,7 +243,7 @@ class BaseDatNat(object):
             raise IOError("Wrong CC country code '%s' - must be any valid ISO code from the EU area" % cc)   
         elif cc != next(iter(self.COUNTRY)):
             warnings.warn("\n! Mismatch with class variable 'CC': %s !" % next(iter(self.COUNTRY)))
-        if _META_ALWAYS_UPDATED is True and cc is not None:
+        if _META_UPDATED is True and cc is not None:
             self.meta.update({'country': {'code': cc, 'name': COUNTRIES[cc]}}) # isoCountry
         self.__cc = cc
 
@@ -245,47 +254,59 @@ class BaseDatNat(object):
     @property
     def lang(self):
         return self.__lang
-    @lang.setter#analysis:ignore
+    @lang.setter
     def lang(self, lang):
         if lang is None:                          pass
         elif not isinstance(lang, string_types):         
             raise TypeError("Wrong format for LANGuage type '%s' - must be a string" % lang)
         elif not lang in LANGS: # LANGS.keys()
             raise IOError("Wrong LANGuage '%s' - must be any valid ISO language code" % lang)   
-        if _META_ALWAYS_UPDATED is True and lang not in (None,{}):
+        if _META_UPDATED is True and lang not in (None,{}):
             self.meta.update({'lang': {'code': lang, 'name': LANGS[lang]}}) # isoLang
         self.__lang = lang
 
     @property
     def year(self):
         return self.__refdate
-    @year.setter#analysis:ignore
+    @year.setter
     def year(self, year):
         if not (year is None or isinstance(year, int)):         
             raise TypeError("Wrong format for YEAR: '%s' - must be an integer" % year)
-        if _META_ALWAYS_UPDATED is True and year is not None:
+        if _META_UPDATED is True and year is not None:
             self.meta.update({'year': year})
         self.__refdate = year
 
     @property
+    def fmt(self):
+        return self.__format
+    @fmt.setter
+    def fmt(self, fmt):
+        if not (fmt is None or isinstance(fmt, string_types)):         
+            raise TypeError("Wrong format for data ForMaT '%s' - must be a string" % fmt)
+        if _META_UPDATED is True and fmt not in (None,''):
+            self.meta.update({'fmt': fmt})
+        self.__format = fmt
+
+    @property
     def source(self):
         return self.__source
-    @source.setter#analysis:ignore
+    @source.setter
     def source(self, src):
         if not (src is None or isinstance(src, string_types)):         
             raise TypeError("Wrong format for data SOURCE '%s' - must be a string" % src)
-        if _META_ALWAYS_UPDATED is True and src not in (None,''):
+        if _META_UPDATED is True and src not in (None,''):
             self.meta.update({'source': src})
         self.__source = src
 
     @property
     def file(self):
         return self.__file
-    @file.setter#analysis:ignore
+    @file.setter
     def file(self, file):
-        if not (file is None or isinstance(file, string_types)):         
-            raise TypeError("Wrong format for source FILE '%s' - must be a string" % file)
-        if _META_ALWAYS_UPDATED is True and file is not None:
+        if not (file is None or isinstance(file, string_types) \
+                or (isinstance(file, Sequence) and all([isinstance(f, string_types) for f in file]))):         
+            raise TypeError("Wrong format for source FILE '%s' - must be a (list of) string(s)" % file)
+        if _META_UPDATED is True and file is not None:
             self.meta.update({'file': None if file is None else osp.basename(file), 
                               'path': None if file is None else osp.dirname(file)})
         self.__file = file
@@ -300,17 +321,17 @@ class BaseDatNat(object):
             cache = {}
         elif not isinstance(cache, Mapping):
             raise TypeError("Wrong type for CACHE parameter - must be a dictionary")
-        elif set(cache.keys()).difference({'caching','store','expire','force'}) != set():
+        elif set(cache.keys()).difference({'caching','cache_store','cache_expire','cache_force'}) != set():
             raise IOError("Keys for CACHE dictionary not recognised")
         if not(cache.get('caching') is None or isinstance(cache['caching'], (str,bool))):
             raise TypeError("Wrong type for CACHING flag")
-        elif not(cache.get('store') is None or isinstance(cache['store'], str)):
-            raise TypeError("Wrong type for STORE parameter")
-        elif not(cache.get('expire') is None or     \
-                 (isinstance(cache['expire'], (int, timedelta))) and int(cache['expire'])>=-1):
-            raise TypeError("Wrong type for EXPIRE parameter")
-        elif not(cache.get('force') is None or isinstance(cache['force'], bool)):
-            raise TypeError("Wrong type for FORCE flag")
+        elif not(cache.get('cache_store') is None or isinstance(cache['cache_store'], str)):
+            raise TypeError("Wrong type for CACHE_STORE parameter")
+        elif not(cache.get('cache_expire') is None or     \
+                 (isinstance(cache['cache_expire'], (int, timedelta))) and int(cache['cache_expire'])>=-1):
+            raise TypeError("Wrong type for CACHE_EXPIRE parameter")
+        elif not(cache.get('cache_force') is None or isinstance(cache['cache_force'], bool)):
+            raise TypeError("Wrong type for CACHE_FORCE flag")
         self.__cache = cache
 
     @property
@@ -320,7 +341,7 @@ class BaseDatNat(object):
     def proj(self, proj):
         if not (proj is None or isinstance(proj, string_types)):         
             raise TypeError("Wrong format for PROJection type '%s' - must be a string" % proj)
-        if _META_ALWAYS_UPDATED is True and proj is not None:
+        if _META_UPDATED is True and proj is not None:
             self.meta.update({'proj': proj})
         self.__proj = proj
 
@@ -339,7 +360,7 @@ class BaseDatNat(object):
             cols = [{self.lang: col} for col in cols]
         elif not(isinstance(cols, Sequence) and all([isinstance(col, Mapping) for col in cols])): 
             raise TypeError("Wrong Input COLUMNS headers type '%s' - must be a sequence of dictionaries" % cols)
-        if _META_ALWAYS_UPDATED is True and cols not in (None,[]):
+        if _META_UPDATED is True and cols not in (None,[]):
             self.meta.update({'columns': cols})
         self.__columns = cols
 
@@ -356,7 +377,7 @@ class BaseDatNat(object):
             ind = dict.fromkeys(ind)
         elif not isinstance(ind, Mapping):
             raise TypeError("Wrong Output INDEX type '%s' - must be a dictionary" % ind)
-        if _META_ALWAYS_UPDATED is True and ind not in ({},None):
+        if _META_UPDATED is True and ind not in ({},None):
             self.meta.update({'index': ind})
         self.__index = ind
 
@@ -367,7 +388,7 @@ class BaseDatNat(object):
     def sep(self, sep):
         if not (sep is None or isinstance(sep, string_types)):         
             raise TypeError("Wrong format for SEParator '%s' - must be a string" % sep)
-        if _META_ALWAYS_UPDATED is True and sep not in ('',None):
+        if _META_UPDATED is True and sep not in ('',None):
             self.meta.update({'sep': sep})
         self.__sep = sep
 
@@ -378,9 +399,20 @@ class BaseDatNat(object):
     def enc(self, enc):
         if not (enc is None or isinstance(enc, string_types)):         
             raise TypeError("Wrong format for file ENCoding '%s' - must be a string" % enc)
-        if _META_ALWAYS_UPDATED is True and enc is not None:
+        if _META_UPDATED is True and enc is not None:
             self.meta.update({'enc': enc})
         self.__encoding = enc
+
+    @property
+    def dfmt(self):
+        return self.__dateformat
+    @dfmt.setter
+    def dfmt(self, fmt):
+        if not (fmt is None or isinstance(fmt, string_types)):         
+            raise TypeError("Wrong format for DATE type '%s' - must be a string or a datetime" % fmt)
+        if _META_UPDATED is True and fmt is not None:
+            self.meta.update({'dfmt': fmt})
+        self.__dateformat = fmt
 
     @property
     def place(self):
@@ -396,23 +428,24 @@ class BaseDatNat(object):
         self.__place = place
 
     #/************************************************************************/
-    def load_content(self, *src, **kwargs):
-        """Load content of source file.
+    def load_buffer(self, *src, **kwargs):
+        """Load buffer content of source file.
         
-                >>> datnat.load_content()
+                >>> datnat.load_buffer()
         """
         src = (src not in ((None,),()) and src[0]) or kwargs.pop('source', None) or self.source                                               
         file = kwargs.pop('file', None) or self.file 
         if src in (None,'') and file in (None,''):     
              raise IOError("No source filename provided - set keyword file attribute/parameter")
         elif not(src is None or isinstance(src, string_types)):     
-             raise TypeError('wrong format for source data - must be a string')
-        elif not(file is None or isinstance(file, string_types)):     
-             raise TypeError("Wrong format for filename - must be a string")
-        kwargs.update(self.cache)
-        self.content = Content.from_source(file, src=src, **kwargs)       
-        if self.source != src:             self.source = src
-        if self.file != file:           self.file = file
+             raise TypeError("Wrong format for source data - must be a string")
+        elif not(file is None or isinstance(file, string_types)     \
+                 or (isinstance(file, Sequence) and all([isinstance(f,string_types) for f in file]))):     
+             raise TypeError("Wrong format for filename - must be a (list of) string(s)")
+        kwargs.update(self.cache) 
+        self.buffer = Buffer.from_file(file, src=src, **kwargs)       
+        if self.source != src:              self.source = src
+        if self.file != file:               self.file = file
 
     #/************************************************************************/
     def load_data(self, *src, **kwargs):
@@ -420,28 +453,44 @@ class BaseDatNat(object):
         
                 >>> datnat.load_data()
         """
-        ignore_content = kwargs.pop('ignore_content', False)
-        if ignore_content is False and self.content is not None:
+        ignore_buffer = kwargs.pop('ignore_buffer', False)
+        if ignore_buffer is False and self.buffer is not None:
             try:
-                return Dataframe.from_data(self.content, **kwargs) 
+                if Object.is_subclass(self.buffer, (io.RawIOBase,io.BufferedIOBase,io.FileIO)):
+                    self.data = Frame.from_data(io.BytesIO(self.buffer.read()), **kwargs) 
+                elif Object.is_subclass(self.buffer, io.TextIOBase):
+                    self.data = Frame.from_data(io.StringIO(self.buffer.read()), **kwargs) 
+                else:
+                    self.data = Frame.from_data(self.buffer.read(), **kwargs)
             except:
-                warnings.warn('\n! Could not load from content !')
+                try:                        
+                    self.data = Frame.from_data(self.buffer, **kwargs) 
+                    return 
+                except:
+                    warnings.warn('\n! Could not load from content !')
+            else:
+                self.buffer = None
+                return 
+            # finally:
+            #     return
         src = (src not in ((None,),()) and src[0]) or kwargs.pop('source', None) or self.source                                               
         file = kwargs.pop('file', None) or self.file 
         if src in (None,'') and file in (None,''):     
              raise IOError("No source filename provided - set keyword file attribute/parameter")
         elif not(src is None or isinstance(src, string_types)):     
-             raise TypeError('wrong format for source data - must be a string')
-        elif not(file is None or isinstance(file, string_types)):     
-             raise TypeError("Wrong format for filename - must be a string")
-        # ifmt = osp.splitext(src)[-1]
+             raise TypeError("Wrong format for source data - must be a string")
+        elif not(file is None or isinstance(file, string_types)     \
+                 or (isinstance(file, Sequence) and all([isinstance(f,string_types) for f in file]))):     
+             raise TypeError("Wrong format for filename - must be a (list of) string(s)")
+        fmt = kwargs.pop('fmt', self.fmt) # self.meta.get('fmt') or osp.splitext(src)[-1]
         encoding = kwargs.pop('enc', self.enc) # self.meta.get('enc')
-        sep = kwargs.pop('sep', self.sep) # self.meta.get('sep')
-        kwargs.update({'encoding': encoding, 'sep': sep,
+        sep = kwargs.pop('sep', self.sep) # self.meta.get('sep') 
+        kwargs.update({'fmt': fmt,
+                       'encoding': encoding, 'sep': sep,
                        'dtype': kwargs.pop('dtype', object),  
                        'compression': kwargs.pop('compression','infer')})
-        kwargs.update(self.cache)
-        self.data = Dataframe.from_source(file, src=src, **kwargs)       
+        kwargs.update(self.cache) 
+        self.data = Frame.from_file(file, src=src, **kwargs)       
         try:
             assert self.columns not in (None,[],[{}])
         except: 
@@ -449,7 +498,7 @@ class BaseDatNat(object):
         #if set([col[self.lang] for col in self.columns]).difference(set(self.data.columns)) != set():
         #    warnings.warn('\n! mismatched data columns and header fields !')
         # if everything worked well, update the fields in case they differ
-        if self.source != src:             self.source = src
+        if self.source != src:          self.source = src
         if self.file != file:           self.file = file
         if self.enc != encoding:        self.enc = encoding 
         if self.sep != sep:             self.sep = sep 
@@ -501,25 +550,26 @@ class BaseDatNat(object):
             assert ilang in langs or ilang == self.lang
         except AssertionError:
             f = lambda cols: Interpret.translate(cols, ilang=self.lang, olang=ilang, **kwargs)
-            try:                    f(-1)#analysis:ignore
+            try:                    f(-1)
             except TypeError:
                 tcols = f([col[self.lang] for col in self.columns])
                 [col.update({ilang: t}) for (col,t) in zip(self.columns, tcols)]
             except ImportError:     
                 pass
         except KeyError:
-             pass # raise IOError('no columns available')
+            # raise IOError("Language '%s not available - provide with translations" % ilang)
+            pass # raise IOError('no columns available')
         try:
             assert (olang in langs and 'filt' not in kwargs) or olang == self.lang
             # if you add a filter, translation is forced
         except AssertionError:
             f = lambda cols: Interpret.translate(cols, ilang=self.lang, olang=olang, **kwargs)
-            try:                    f(-1)#analysis:ignore
+            try:                    f(-1)
             except TypeError:
                 tcols = f([col[self.lang] for col in self.columns])
                 [col.update({olang: t}) for (col,t) in zip(self.columns, tcols)]
             except ImportError:     
-                pass
+                raise IOError("Language '%s not available - provide with translations" % olang)
         except KeyError:
              pass # raise IOError('no columns available')
         if columns in (None, ('',), ()): # return all translations
@@ -547,7 +597,7 @@ class BaseDatNat(object):
             raise TypeError("Wrong input format for columns - must be a mapping dictionary")
         force_rename = kwargs.pop('force', False)
         lang = kwargs.pop('lang', self.lang)
-        idate = kwargs.pop('date', self.date)
+        dfmt = kwargs.pop('dfmt', self.dfmt)
         # dumb renaming from one language to the other
         if columns=={} and lang!=self.lang:
             try:
@@ -587,16 +637,16 @@ class BaseDatNat(object):
             if cast == self.data[ofield].dtype:
                 continue
             elif cast == datetime:                
-                self.data[ofield] = Dataframe.cast(self.data, ofield, self.config.get('date') or '', ifmt=idate) 
+                self.data[ofield] = Frame.cast(self.data, ofield, self.config.get('dfmt') or '', ifmt=dfmt) 
             else:
-                self.data[ofield] = Dataframe.cast(self.data, ofield, cast)
+                self.data[ofield] = Frame.cast(self.data, ofield, cast)
         return columns 
 
     #/************************************************************************/
     def clean_column(self, *columns, **kwargs):
         """Filter the dataframe.
         """
-        columns = (columns not in ((None,),()) and columns[0])        or \
+        columns = (columns not in ((None,),()) and columns[0])          or \
                     kwargs.pop('drop', [])
         if isinstance(columns, string_types):
             columns = [columns,]
@@ -667,8 +717,8 @@ class BaseDatNat(object):
                 >>> datnat.define_place(place=['street', 'no', 'city', 'zip', 'country'])
         """
         lang = kwargs.pop('lang', self.config.get('lang'))  
-        place = (place not in ((None,),()) and place[0])            or \
-                kwargs.pop('place', None)                           or \
+        place = (place not in ((None,),()) and place[0])                or \
+                kwargs.pop('place', None)                               or \
                 self.place
         try:
             assert place in ([],None,'')
@@ -716,7 +766,7 @@ class BaseDatNat(object):
         
             >>> datnat.find_location(latlon=['lat', 'lon'])
         """
-        latlon = (latlon not in ((None,),()) and latlon)            or \
+        latlon = (latlon not in ((None,),()) and latlon)                or \
                 kwargs.pop('latlon', None)                        
         if not isinstance(latlon, string_types) and isinstance(latlon, Sequence):
             if isinstance(latlon, Sequence) and len(latlon) == 1:
@@ -795,7 +845,7 @@ class BaseDatNat(object):
         # self.data[olat], self.data[olon] = pd.to_numeric(self.data[olat]), pd.to_numeric(self.data[olon])
         try:
             self.data[olat], self.data[olon] =                              \
-                self.data[olat].astype(BASETYPE.get(otlat)),    \
+                self.data[olat].astype(BASETYPE.get(otlat)),                \
                 self.data[olon].astype(BASETYPE.get(otlon))
         except:
             pass
@@ -890,7 +940,7 @@ class BaseDatNat(object):
             self.clean_column(list(self.data.columns), keep = keepcol)
         except:
             pass
-        if _INDEX_ALWAYS_AS_ILANG is True:
+        if _INDEX_AS_ILANG is True:
             self.index.update(columns)
         
     #/************************************************************************/
@@ -917,12 +967,12 @@ class BaseDatNat(object):
         latlon = kwargs.pop('latlon', None) or [INDEX['lat']['name'], INDEX['lon']['name']]
         if fmt == 'geojson':
             try:
-                results = Dataframe.to_geojson(self.data, columns = columns, latlon = latlon)
+                results = Frame.to_geojson(self.data, columns = columns, latlon = latlon)
             except:
                 raise IOError("Issue when creating GEOJSON geometries")
         elif  fmt == 'json':
             try:
-                results = Dataframe.to_json(self.data, columns = columns)
+                results = Frame.to_json(self.data, columns = columns)
             except:
                 raise IOError("Issue when creating JSON attributes")
         try:
@@ -998,7 +1048,7 @@ class BaseDatNat(object):
                 except:
                     raise IOError("Impossible saving metadata file")
         elif fmt == 'gpkg':
-            results = Dataframe.to_gpkg(self.data, columns = columns)#analysis:ignore
+            results = Frame.to_gpkg(self.data, columns = columns)#analysis:ignore
         return
     
     #/************************************************************************/
@@ -1012,11 +1062,16 @@ class BaseDatNat(object):
         return
     
     #/************************************************************************/
-    def update_meta(self):    
+    def update_meta(self, keys=None):    
         """Update the metadata file.
         """
         meta = deepcopy(self.meta.to_dict()) # self.meta.__dict__
-        for attr in meta.keys():
+        try:
+            keys = meta.PROPERTIES
+        except:
+            keys = meta.keys()
+        keys = keys or MetaDatNat.PROPERTIES
+        for attr in keys:
             if attr == 'index':
                 # NO: meta.update({'index': self.index})
                 pass
@@ -1036,7 +1091,7 @@ class BaseDatNat(object):
         
             >>> meta = fac.dumps_meta()
         """# basically... nothing much more than self.meta.to_dict()
-        if _META_ALWAYS_UPDATED is False:
+        if _META_UPDATED is False:
             self.update_meta()
         try:
             assert kwargs.pop('as_str', False) is False
@@ -1071,7 +1126,7 @@ class BaseDatNat(object):
             except:
                 dest = osp.join(PACKPATH, '%s.json' % self.cc)
             warnings.warn("\n! Metadata file '%s' will be created" % dest)
-        if _META_ALWAYS_UPDATED is False:
+        if _META_UPDATED is False:
             self.update_meta()
         # self.meta.dump(dest)
         with open(dest, 'w', encoding=self.enc) as f:
@@ -1083,7 +1138,8 @@ class BaseDatNat(object):
           
 
 #==============================================================================
-#%% Function datnatFactory
+# Function datnatFactory
+#==============================================================================
 
 def datnatFactory(*args, **kwargs):
     """Generic function to derive a class from the base class :class:`BaseFacility`
@@ -1236,7 +1292,7 @@ def datnatFactory(*args, **kwargs):
         # super(self.__class__, self).__init__(*args, **kwargs)) ... abstract, we don't know the class yet
     attributes.update({"__init__": __init__})
     try:
-        name = '%s%s' % (CC.upper(), CATEGORY.lower())
+        name = '%s%s' % (CC.upper(), CATEGORY['code'].lower())
     except:
         name = 'New%s' % basecls.__name__.replace('Base','')
     return type(name, (basecls,), attributes)
