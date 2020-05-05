@@ -45,7 +45,9 @@ REQUIRES_PYTHON = '>=3.6.0'
 
 # packages required for this module to be executed
 REQUIRED = [
-    'numpy', 'pandas', 'requests', 'json', 'datetime'
+    'numpy', 'pandas', 'geopandas', 'requests', 'zipfile', 
+    'json', 'datetime', 'time', 'calendar', 'copy', 
+    'inspect', 'operator', 'functools'
 ]
 
 # optional packages
@@ -55,6 +57,11 @@ EXTRAS = {
     'pyproj': 'pyproj',
     'gisco': 'happygisco', 
     'gtrans': 'googletrans'
+    'hashlib': 'hashlib',
+    'shutil': 'shutil',
+    'bs4': 'bs4',
+    'chardet': 'chardet',
+    'googletrans': 'googletrans'
 }
 
 
