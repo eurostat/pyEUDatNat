@@ -1,8 +1,8 @@
 name: hcs-env
 channels:
   - conda-forge
-  - defaults
   - conda-forge/label/broken
+  - defaults
 dependencies:
   - ipython
   - pip
