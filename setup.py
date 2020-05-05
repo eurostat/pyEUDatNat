@@ -59,8 +59,8 @@ EXTRAS = {
     'pyproj': 'pyproj',
     'gtrans': 'googletrans',
     'bs4': 'bs4',
-    'chardet': 'chardet'
-    'gisco': 'happygisco', 
+    'chardet': 'chardet',
+    'gisco': 'happygisco'
 }
 
 
