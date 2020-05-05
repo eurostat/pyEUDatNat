@@ -45,19 +45,19 @@ REQUIRES_PYTHON = '>=3.6.0'
 
 # packages required for this module to be executed
 REQUIRED = [
-    'numpy', 'pandas', 'geopandas', 'requests', 
-    # in Python standard library (see https://docs.python.org/3/library/):
-    # 'collections', 'collections.abc', 'json', 'urllib', 'zipfile',
-    # 'datetime', 'time', 'calendar', 'copy', 'hashlib': 'hashlib', 'shutil': 'shutil',
-    # 'inspect', 'operator', 'functools', 'itertools'
+    'numpy', 'pandas', 'geopandas', 'requests'
 ]
+# in Python standard library (see https://docs.python.org/3/library/):
+# 'collections', 'collections.abc', 'json', 'urllib', 'zipfile',
+# 'datetime', 'time', 'calendar', 'copy', 'hashlib': 'hashlib', 'shutil': 'shutil',
+# 'inspect', 'operator', 'functools', 'itertools'
 
 # optional packages
 EXTRAS = {
     'geopy': 'geopy', 
     'geojson': 'geojson', 
     'pyproj': 'pyproj',
-    'gtrans': 'googletrans'
+    'gtrans': 'googletrans',
     'bs4': 'bs4',
     'chardet': 'chardet'
     'gisco': 'happygisco', 
