@@ -33,7 +33,7 @@ import io, sys
 from os import path as osp
 import warnings
 
-from collections import Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from six import string_types
 
 from datetime import datetime, timedelta
@@ -136,7 +136,7 @@ class BaseDatNat(object):
         # retrieve the input data projection
         self.proj = kwargs.pop('proj', self.meta.get('proj')) # projection system
         # retrieve a default date format
-        self.dfmt = kwargs.pop('dfmt', self.meta.get('dfmt') or '%d-%m-%Y %H:%M') # input date format
+        self.datefmt = kwargs.pop('datefmt', self.meta.get('datefmt') or '%d-%m-%Y %H:%M') # input date format
         # retrieve columns when already known
         columns = kwargs.pop('columns', None) 
         self.columns = columns or self.meta.get('columns') or []    # header columns
@@ -404,14 +404,14 @@ class BaseDatNat(object):
         self.__encoding = enc
 
     @property
-    def dfmt(self):
+    def datefmt(self):
         return self.__dateformat
-    @dfmt.setter
-    def dfmt(self, fmt):
+    @datefmt.setter
+    def datefmt(self, fmt):
         if not (fmt is None or isinstance(fmt, string_types)):         
             raise TypeError("Wrong format for DATE type '%s' - must be a string or a datetime" % fmt)
         if _META_UPDATED is True and fmt is not None:
-            self.meta.update({'dfmt': fmt})
+            self.meta.update({'datefmt': fmt})
         self.__dateformat = fmt
 
     @property
@@ -597,7 +597,7 @@ class BaseDatNat(object):
             raise TypeError("Wrong input format for columns - must be a mapping dictionary")
         force_rename = kwargs.pop('force', False)
         lang = kwargs.pop('lang', self.lang)
-        dfmt = kwargs.pop('dfmt', self.dfmt)
+        dfmt = kwargs.pop('datefmt', self.datefmt)
         # dumb renaming from one language to the other
         if columns=={} and lang!=self.lang:
             try:
@@ -637,7 +637,7 @@ class BaseDatNat(object):
             if cast == self.data[ofield].dtype:
                 continue
             elif cast == datetime:                
-                self.data[ofield] = Frame.cast(self.data, ofield, self.config.get('dfmt') or '', ifmt=dfmt) 
+                self.data[ofield] = Frame.cast(self.data, ofield, self.config.get('datefmt') or '', ifmt=dfmt) 
             else:
                 self.data[ofield] = Frame.cast(self.data, ofield, cast)
         return columns 

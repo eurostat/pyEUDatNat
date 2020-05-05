@@ -39,7 +39,8 @@ import io, os, sys
 from os import path as osp
 import warnings#analysis:ignore
 
-from collections import OrderedDict, Mapping, Sequence#analysis:ignore
+from collections import OrderedDict
+from collections.abc import Mapping, Sequence
 from six import string_types
 
 import time

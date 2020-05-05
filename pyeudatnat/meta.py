@@ -23,7 +23,8 @@ Module metadata template models.
 from os import path as osp
 import warnings#analysis:ignore
 
-from collections import OrderedDict, Mapping, Sequence#analysis:ignore
+from collections import OrderedDict
+from collections.abc import Mapping, Sequence
 from six import string_types
 
 from functools import reduce
@@ -213,7 +214,7 @@ class MetaDatNat(MetaDat):
     """
     
     PROPERTIES = [ 'provider', 'country', 'lang', 'src', 'file', 'path', 'columns', 
-                   'index', 'proj', 'type', 'enc', 'sep', 'date' ]
+                   'index', 'proj', 'type', 'enc', 'sep', 'date', 'datefmt' ]
     
     #/************************************************************************/
     def __init__(self, *args, **kwargs):

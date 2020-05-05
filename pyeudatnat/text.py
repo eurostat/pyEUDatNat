@@ -30,7 +30,8 @@ Module implementing miscenalleous text processing methods, including translation
 import re
 import warnings#analysis:ignore
 
-from collections import OrderedDict, Mapping, Sequence#analysis:ignore
+from collections import OrderedDict
+from collections.abc import Mapping, Sequence
 from six import string_types
 
 try:

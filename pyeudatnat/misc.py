@@ -11,7 +11,7 @@ Module implementing miscellaneous useful methods.
 *require*:      :mod:`os`, :mod:`six`, :mod:`collections`, :mod:`inspect`, :mod:`re`, 
                 :mod:`numpy`, :mod:`datetime`, :mod:`time`, :mod:`operator`
 
-*optional*:     :mod:`dateutil`, :mod:`zipfile`
+*optional*:     :mod:`dateutil`
 
 *call*:         :mod:`pyeudatnat`         
 
@@ -24,14 +24,14 @@ Module implementing miscellaneous useful methods.
 
 #%% Settings
 
-import io, os, sys#analysis:ignore
+import os
 from os import path as osp
 import inspect
 import re
 import warnings#analysis:ignore
 
 import operator
-from collections import OrderedDict, Mapping, Sequence#analysis:ignore
+from collections.abc import Mapping, Sequence
 from six import string_types
 
 import time
@@ -54,13 +54,6 @@ else:
 
 import numpy as np
 import pandas as pd
-
-try:
-    import zipfile
-except:
-    _is_zipfile_installed = False
-else:
-    _is_zipfile_installed = True
 
 ISWIN           = os.name=='nt' # sys.platform[0:3].lower()=='win'
 
