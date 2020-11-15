@@ -6,11 +6,11 @@ channels:
 dependencies:
   - ipython
   - pip
-  - matplotlib
-  - numpy
   - scipy
   - pandas
+  - numpy
   - requests 
+  - matplotlib
   - seaborn
   - jupyter_contrib_nbextensions
   - ipywidgets
