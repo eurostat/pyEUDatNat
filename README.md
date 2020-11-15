@@ -1,7 +1,7 @@
 pyeudatnat
 =========
 
-Basic module for the automated collection and formatting of raw EU data from national authorities using providers metadata.
+Python module for the automated and metadata-based collection, ingestion and formatting of raw EU data from national providers.
 ---
 
 <table align="center">

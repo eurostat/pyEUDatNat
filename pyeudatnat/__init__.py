@@ -121,7 +121,7 @@ ISOCOUNTRIES        = { ## alpha-2/ISO 3166 codes
 
 # ISOCODECTRIES = dict(map(reversed, ISOCOUNTRIES.items())) # {v:k for (k,v) in ISOCOUNTRIES.items()}
 
-__ACOUNTRIES        = { "EU27_2020":
+AREAS            = { "EU27_2020":
                             ["BE", "BG", "CZ", "DK", "DE", "EE", "IE", "EL", "ES", "FR", "HR", "IT", "CY", "LV", "LT", "LU", "HU", "MT", "NL", "AT", "PL", "PT", "RO", "SI", "SK", "FI", "SE"
                              ],
                         "EU27_2019": 
@@ -143,7 +143,7 @@ __AREA.extend(__TERRITORIES.keys())
 
 #__COUNTRIES     = {a:__countries[a] for a in __area}
 #__COUNTRIES.update({t:__territories[t] for t in __territories})
-__COUNTRIES         = dict((k,v) for (k,v) in ISOCOUNTRIES.items() for a in __AREA if k in __ACOUNTRIES[a])
+__COUNTRIES         = dict((k,v) for (k,v) in ISOCOUNTRIES.items() for a in __AREA if k in AREAS[a])
 __COUNTRIES.update(dict((k,v) for (k,v) in ISOCOUNTRIES.items() for t in __TERRITORIES if k in __TERRITORIES[t]))
 
 COUNTRIES           = __COUNTRIES

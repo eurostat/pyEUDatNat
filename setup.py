@@ -34,8 +34,8 @@ __THISDIR = os.path.dirname(__file__)
 
 PACKNAME            = 'pyeudatnat' # this package...
 PACKURL             = 'https://github.com/eurostat/pyeudatnat'
-DESCRIPTION         = 'Python package supporting the automated harvesting and ingestion of \
-    pan-European datasets made openly available by national/regional/local authorities.'
+DESCRIPTION         = 'Python package supporting the automated harvesting, ingestion and formatting \
+    of pan-European datasets made openly available by national/regional/local authorities.'
 VERSION             = None
 
 EMAIL               = 'jacopo.grazzini@ec.europa.eu'
@@ -45,7 +45,7 @@ REQUIRES_PYTHON = '>=3.6.0'
 
 # packages required for this module to be executed
 REQUIRED = [
-    'numpy', 'pandas', 'geopandas', 'requests'
+    'numpy', 'pandas', 'geopandas', 'requests', 'chardet'
 ]
 # in Python standard library (see https://docs.python.org/3/library/):
 # 'collections', 'collections.abc', 'json', 'urllib', 'zipfile',
