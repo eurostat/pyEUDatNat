@@ -42,13 +42,14 @@ from copy import deepcopy
 import numpy as np
 import pandas as pd
 
-from pyeudatnat import PACKPATH, COUNTRIES
+from pyeudatnat import PACKPATH, COUNTRIES, AREAS
 from pyeudatnat.meta import MetaDat, MetaDatNat
-from pyeudatnat.misc import Object
+from pyeudatnat.misc import Object, Structure
+from pyeudatnat.io import FORMATS, DEFFORMAT, ENCODINGS, DEFENCODING
 from pyeudatnat.io import Json, Frame, Buffer
-from pyeudatnat.text import LANGS, Interpret, isoLang
-from pyeudatnat.geo import GeoService, isoCountry
-
+from pyeudatnat.text import LANGS 
+from pyeudatnat.text import Interpret, isoLang
+from pyeudatnat.geo import Service as GeoService, isoCountry
 
 __THISDIR       = osp.dirname(__file__)
 
@@ -109,7 +110,7 @@ class BaseDatNat(object):
         lang = isoLang(self.meta.get('lang'))
         self.lang = kwargs.pop('lang', None if lang in ({},None) else lang.get('code'))
         # retrieve input data parameters, e.g. name, location, and format 
-        self.enc = kwargs.pop('enc',self.meta.get('enc'))
+        self.enc = kwargs.pop('enc',self.meta.get('enc') or DEFENCODING)
         self.sep = kwargs.pop('sep',self.meta.get('sep'))        
         path, file = kwargs.pop('path',self.meta.get('path') or ''), kwargs.pop('file',self.meta.get('file') or '')
         # path = osp.abspath(path)
@@ -120,7 +121,7 @@ class BaseDatNat(object):
             else path)))
         self.source = kwargs.pop('source', self.meta.get('source') or None) # to avoid ''
         # retrieve data format, if any
-        self.fmt = kwargs.pop('fmt', self.meta.get('fmt') or None) # to avoid ''
+        self.fmt = kwargs.pop('fmt', self.meta.get('fmt') or DEFFORMAT)
         # retrieve caching arguments
         self.cache = {'caching':kwargs.pop('caching',False), 
                       'cache_store':None, 'cache_expire':0, 'cache_force':True}
@@ -252,6 +253,10 @@ class BaseDatNat(object):
         return COUNTRIES[self.cc]
 
     @property
+    def area(self):
+        return self.country
+
+    @property
     def lang(self):
         return self.__lang
     @lang.setter
@@ -281,8 +286,11 @@ class BaseDatNat(object):
         return self.__format
     @fmt.setter
     def fmt(self, fmt):
-        if not (fmt is None or isinstance(fmt, string_types)):         
-            raise TypeError("Wrong format for data ForMaT '%s' - must be a string" % fmt)
+        if fmt is None:                          pass
+        elif not isinstance(fmt, string_types):         
+            raise TypeError("Wrong type for data ForMaT '%s' - must be a string" % fmt)
+        elif not fmt in Structure.uniq_list(FORMATS):
+            raise IOError("Wrong ForMaT: '%s' currently not supported" % fmt)            
         if _META_UPDATED is True and fmt not in (None,''):
             self.meta.update({'fmt': fmt})
         self.__format = fmt
@@ -399,6 +407,8 @@ class BaseDatNat(object):
     def enc(self, enc):
         if not (enc is None or isinstance(enc, string_types)):         
             raise TypeError("Wrong format for file ENCoding '%s' - must be a string" % enc)
+        #elif not enc in Structure.uniq_list(ENCODINGS):
+        #    raise IOError("Wrong ENCoding: '%s' not recognised" % enc)            
         if _META_UPDATED is True and enc is not None:
             self.meta.update({'enc': enc})
         self.__encoding = enc
@@ -637,7 +647,7 @@ class BaseDatNat(object):
             if cast == self.data[ofield].dtype:
                 continue
             elif cast == datetime:                
-                self.data[ofield] = Frame.cast(self.data, ofield, self.config.get('datefmt') or '', ifmt=dfmt) 
+                self.data[ofield] = Frame.cast(self.data, ofield, odfmt=self.config.get('datefmt') or '', idfmt=dfmt) 
             else:
                 self.data[ofield] = Frame.cast(self.data, ofield, cast)
         return columns 
@@ -1010,7 +1020,9 @@ class BaseDatNat(object):
         if not fmt in FMT:
             raise TypeError("Wrong input format - must be any string among '%s'" % list(FMT.keys()))
         if dest in (None,''):
-            dest = osp.abspath(osp.join(self.config.get('path'), fmt, self.config.get('file') % (self.cc, FMT.get(fmt))))
+            dest = osp.abspath(osp.join(self.config.get('path'), 
+                                        fmt, 
+                                        self.config.get('file') % (self.cc, FMT.get(fmt))))
             warnings.warn("\n! Output data file '%s' will be created" % dest)
         columns, latlon = kwargs.pop('columns', None), kwargs.pop('latlon', None)
         INDEX = self.config.get('index') or {}

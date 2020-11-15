@@ -32,20 +32,50 @@ processing.
 
 #%% Settings           
 
+import io, sys
+from os import path as osp
 import warnings#analysis:ignore
 
 from collections import OrderedDict, Mapping, Sequence#analysis:ignore
+import functools, itertools
 from six import string_types
+from uuid import uuid4
+
+import zipfile
 
 import numpy as np#analysis:ignore
 import pandas as pd#analysis:ignore
+
+try:
+    from osgeo import gdal, gdal_array, gdalconst 
+    from osgeo import osr, ogr
+except ImportError:
+    try:
+        import gdal, gdal_array, gdalconst
+        import ogr, osr
+    except ImportError:
+        #warnings.warn('\n! Missing gdal package (https://pcjericks.github.io/py-gdalogr-cookbook/index.html) !')
+        class gdal():
+            GetDriverCount = lambda *args: 0
+            GetDriver = lambda *args: None
+
+try: 
+    import rasterio
+except ImportError:
+    pass
+
+try:
+    import shapely
+    from shapely import wkb, geometry
+except ImportError:
+    pass
 
 try:
     assert False
     import happygisco#analysis:ignore
 except (AssertionError,ImportError):
     _is_happy_installed = False
-    warnings.warn('\n! Missing happygisco package (https://github.com/eurostat/happyGISCO) - GISCO web services not available !')
+    #warnings.warn('\n! Missing happygisco package (https://github.com/eurostat/happyGISCO) - GISCO web services not available !')
 else:
     # warnings.warn('\n! happygisco help: hhttp://happygisco.readthedocs.io/ !')
     _is_happy_installed = True
@@ -56,7 +86,7 @@ try:
     import geopy#analysis:ignore 
 except ImportError: 
     _is_geopy_installed = False
-    warnings.warn('\n! Missing geopy package (https://github.com/geopy/geopy) !')   
+    #warnings.warn('\n! Missing geopy package (https://github.com/geopy/geopy) !')   
 else:
     # warnings.warn('\n! geopy help: http://geopy.readthedocs.io/en/latest/ !')
     _is_geopy_installed = True
@@ -82,9 +112,7 @@ else:
     from pyproj import CRS as crs, Transformer
 
 from pyeudatnat import COUNTRIES
-
-
-#%% Global vars             
+from pyeudatnat.misc import File
 
 __CODERS        = { }
 CODERS          = __CODERS                                                           \
@@ -101,8 +129,17 @@ CODERS          = __CODERS                                                      
                     or __CODERS # at the end, CODERS will be equal to __CODERS after its updates
 
 # default geocoder... but this can be reset when declaring a subclass
-DEFCODER = {'Bing' : None} # 'GISCO', 'Nominatim', 'GoogleV3', 'GMaps', 'GPlace', 'GeoNames'
+DEFCODER        = {'Bing' : None} # 'GISCO', 'Nominatim', 'GoogleV3', 'GMaps', 'GPlace', 'GeoNames'
 
+DRIVERS         = {gdal.GetDriver(i).ShortName: gdal.GetDriver(i).LongName
+                   for i in range(gdal.GetDriverCount())}
+
+DEFDRIVER       = "GeoJSON"
+
+DEFPROJ4LL      = '+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs'
+DEFPROJ4SM      = '+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +no_defs'
+
+ 
 # LATLON        = ['lat', 'lon'] # 'coord' # 'latlon'
 # ORDER         = 'lL' # first lat, second Lon 
 
@@ -110,9 +147,11 @@ PLACE = ['street', 'number', 'postcode', 'city', 'country']
 """Fields used to defined a toponomy (location/place).
 """
 
+#%% Core functions/classes
 
 #==============================================================================
-#%% Method isoCountry
+# Method isoCountry
+#==============================================================================
 
 def isoCountry(arg):
     """Given a country name or an ISO 3166 code, return the pair {name,code}.
@@ -163,14 +202,13 @@ def isoCountry(arg):
 
 
 #==============================================================================
-#%% Class GeoService
+# Class Service
+#==============================================================================
   
-import time
-
-class GeoService(object):
+class Service(object):
     """Instantiation class for geoprocessing module.
     
-        >>> geoserv = GeoService()
+        >>> geoserv = Service()
     """
             
     #/************************************************************************/
@@ -178,7 +216,7 @@ class GeoService(object):
     def select_coder(cls, arg):
         """Define geocoder.
         
-            >>> coder = GeoService.selectCoder(arg)
+            >>> coder = Service.selectCoder(arg)
         """
         if arg is None:
             #arg = cls.DEFCODER.copy()
@@ -217,7 +255,6 @@ class GeoService(object):
         self.geocoder = self.select_coder(coder) 
         coder = self.geocoder['coder']
         key = CODERS[coder]
-        time.sleep(3)
         try:
             assert _is_happy_installed is True 
         except: # _is_geopy_installed is True and, hopefully, coder not in ('osm','GISCO')
@@ -323,3 +360,378 @@ class GeoService(object):
             except:
                 raise IOError("Projection of coordinates failed...")
 
+#==============================================================================
+# Class Vector
+#==============================================================================
+  
+class Vector(object):
+    """Instantiation class for vector data.
+    
+        >>> vector = Vector()
+    """
+    
+    #/************************************************************************/
+    @staticmethod
+    def open(file, src=None, **kwargs):
+        """
+        Accepts gdal compatible file remotely or on disk and returns gdal pointer.
+
+        note:
+            Considering the use of PushErrorHandler in open, this function
+            prevents from being called inside another function.
+        """       
+        # gdal.ErrorReset()
+        # gdal.PushErrorHandler('QuietErrorHandler') 
+        # ogr.RegisterAll()
+        try:
+            assert file is None or isinstance(file, (bytes,io.BytesIO,io.StringIO,string_types))
+        except:
+            raise TypeError("Wrong type for file parameter - must be bytes or string")
+        try:
+            assert src is None or isinstance(src, string_types)
+        except:
+            raise TypeError("Wrong type for data source parameter - must be a string")
+        if src is None:
+            src, file = file, None
+        driver = kwargs.pop('driver', None)
+        try:
+            assert isinstance(driver,string_types) and driver in DRIVERS
+        except:
+            raise TypeError("Wrong type for DRIVER parameter - must a GDAL driver")
+        mode = kwargs.pop('mode', 0) # 0 means read-only. 1 means writeable.
+        try:
+            assert isinstance(mode,int) and mode in [0,1]
+        except:
+            raise TypeError("Wrong type for MODE parameter - must be 0 or 1")
+        on_disk = kwargs.pop('on_disk',True)
+        vsi = not on_disk and kwargs.pop('vsi',False)
+        try:
+            assert isinstance(on_disk,bool) and (isinstance(vsi,bool) or isinstance(vsi,string_types))
+        except:
+            raise TypeError("Wrong type for VIRTUAL and ON_DISK parameters - must be bool or string")
+        if isinstance(src, (io.BytesIO,io.StringIO)):
+            driver = "MEMORY"
+        if driver is None:
+            fopen = ogr.Open
+        else:
+            drv = ogr.GetDriverByName(driver)
+            fopen = drv.Open
+        if vsi is not False: # https://gdal.org/user/virtual_file_systems.html
+            vname = vsi or Sys.uuid() 
+        if isinstance(src, (io.BytesIO,io.StringIO)):
+            mmap = "/vsimem/%s" % vname
+            try:
+                gdal.FileFromMemBuffer(mmap, src.read())
+            except:
+                raise OSError("Error retrieving source data")
+            else:
+                src = mmap
+        elif isinstance(src, bytes):
+            mmap = "/vsimem/%s" % vname
+            try:
+                gdal.FileFromMemBuffer(mmap, src)
+            except:
+                raise OSError("Error retrieving source data")
+            else:
+                src = mmap
+        elif isinstance(src,string_types):
+            if not on_disk and zipfile.is_zipfile(src):
+                if src.endswith('zip'):
+                    mmap = "/vsizip"
+                elif any([src.endswith(p) for p in ['gz', 'gzip']]):
+                    mmap = "/vsizip"
+                elif any([src.endswith(p) for p in ['tgz', 'tar']]):
+                    mmap = "/vsitar"
+                mmap = "%s/%ss/%s" % (mmap,src,file)
+                try:
+                    assert False
+                    gdal.FileFromMemBuffer(mmap, src) #????
+                except:
+                    raise OSError("Error retrieving zipped source data")
+                else:
+                    src = mmap
+            elif not File.filexists(src):
+                raise OSError("File '%s' not found on disk" % src)
+            else:
+                mmap = None # and src unchanged
+        try:
+            ds = fopen(src, update=mode)
+            assert ds is not None
+        except AssertionError:
+            raise OSError("Nul source data")
+        except:
+            raise OSError("Error retrieving source data")
+        # gdal.PopErrorHandler()
+        if mmap not in (None,False):
+            return ds, mmap
+        else:
+            return ds
+
+    #/************************************************************************/
+    @staticmethod
+    def new(ds, **kwargs):
+        try:
+            assert isinstance(ds, string_types)
+        except:
+            raise TypeError("Wrong type for data source - must be a string")
+        if File.filexists(ds):      
+            File.remove(ds)
+        driver = kwargs.pop('driver', DEFDRIVER)
+        try:
+            assert isinstance(driver,string_types) and driver in DRIVERS
+        except:
+            raise TypeError("Wrong type for DRIVER parameter - must a GDAL driver")
+        else:
+            driver = ogr.GetDriverByName(driver)
+        try:
+            return driver.CreateDataSource(ds)
+        except:
+            raise IOError("Error creating data source '%s'" % ds)   
+    
+    #/************************************************************************/
+    @staticmethod
+    def open_layer(arg, **kwargs):
+        try:
+            assert isinstance(arg, (string_types,ogr.DataSource,ogr.Layer))
+        except:
+            raise TypeError("Wrong type for input parameter - must be a string, a data source or a layer")
+        ds, layer = None, None
+        if isinstance(arg, string_types):                    
+            ds = Vector.open(arg, **kwargs)
+            if isinstance(ds, Sequence):     ds = ds[0]
+        elif isinstance(arg, ogr.DataSource):                
+            ds = arg
+        elif isinstance(arg, ogr.Layer):                     
+            return layer # dummy
+        geom = kwargs.pop('geom', [])
+        if geom is None:       
+            return ds.GetLayer()
+        else:                   
+            return ds.GetLayerByName(geom)           
+    
+    #/************************************************************************/
+    @staticmethod
+    def spatialref4(proj):       
+        srs = osr.SpatialReference()
+        try:
+            assert srs.ImportFromProj4(proj) == 0
+        except:
+            raise IOError("Could not import proj4: %s'" % proj)
+        else:
+            return srs
+
+    #/************************************************************************/
+    @staticmethod
+    def new_layer(arg, **kwargs):
+        """Create layer from a datasource given proj4 and fields.
+        """
+        try:
+            assert isinstance(arg, (string_types,ogr.DataSource,ogr.Layer))
+        except:
+            raise TypeError("Wrong type for input parameter - must be a string, a data source or a layer")
+        if isinstance(arg, string_types):                               
+            ds = Vector.new(arg, driver=kwargs.pop('driver',DEFDRIVER)) 
+            layer = osp.splitext(osp.basename(arg))[0] # osp.splitext(osp.split(arg)[1])[0]
+        elif isinstance(arg, ogr.DataSource):                    
+            ds = arg
+        elif isinstance(arg,ogr.Layer):                          
+            return arg
+        # read other parameters
+        srs = Vector.spatialref4(kwargs.pop('proj', None))
+        layer, geom = kwargs.pop('layer',layer), kwargs.pop('geom',[])
+        try:
+            return ds.CreateLayer(layer, srs, geom)
+        except:
+            raise IOError("Could not create layer")
+
+    #/************************************************************************/
+    @staticmethod
+    def read(arg, **kwargs):
+        """Load proj4, shapegeo, fields.
+
+        USAGE:
+            shapegeo, proj, fieldpacks, fielddefs = read(layer, proj_src='', proj_dst='')
+        """
+        try:
+            assert isinstance(arg, (string_types,ogr.DataSource,ogr.Layer))
+        except:
+            raise TypeError("Wrong type for input parameter - must be a string, a data source or a layer")
+        # read layer
+        layer = Vector.open_layer(arg)
+        srs = layer.GetSpatialRef()          
+        # get spatialReference from the layer
+        proj = srs.ExportToProj4() if srs else '' or kwargs.pop('proj','')
+        kwargs.update({'proj': proj})        
+        # load features (shapegeo and fdpacks)
+        fielddefs = Vector.read_field(layer)[0]
+        geoms, fields = Vector.readlayer(layer, **kwargs)
+        return geoms, proj, fields, fielddefs
+
+    #/************************************************************************/
+    @staticmethod
+    def read_layer(layer, **kwargs):
+        try:
+            assert isinstance(layer, ogr.Layer)
+        except:
+            raise TypeError("Wrong type for input layer - must be a ogr.layer")
+        iproj, oproj = kwargs.pop('iproj',''), kwargs.pop('oproj','')
+        # get fddefs from featureDefinition
+        fielddefs, fdindices = Vector.read_field(layer)
+        feature = layer.GetNextFeature()
+        geotf = Vector.geometry_factory(iproj, oproj)
+        # loop over features
+        geoms, fields = [], []
+        while feature:
+            geoms.append(wkb.loads(geotf(feature.GetGeometryRef()).ExportToWkb()))
+            fields.append([feature.GetField(x) for x in fdindices])
+            # get the next feature
+            feature = layer.GetNextFeature()
+        return geoms, fields #, fielddefs
+        
+    @staticmethod
+    def geometry_factory(iproj, oproj=DEFPROJ4LL):
+        """Return a function that transforms a geometry from one spatial reference
+        to another.
+        """
+        try:
+            assert isinstance(iproj, string_types) and isinstance(oproj, string_types)
+        except:
+            raise TypeError("Wrong types for projections - must be strings")
+        if iproj == oproj:
+            return lambda g: g
+        def geotrans(g, ct): # transform a shapelyGeometry or gdalGeometry
+            is_base = isinstance(g, geometry.base.BaseGeometry) # test for shapelyGeometry
+            if is_base: # if shapelyGeometry, convert to a gdalGeometry
+                g = ogr.CreateGeometryFromWkb(g.wkb)
+            try:
+                assert g.Transform(ct) == 0
+            except:
+                raise IOError("Could not transform geometry: '%s'" % g.ExportToWkt())
+            if is_base: # if we originally had a shapelyGeometry, convert it back
+                g = wkb.loads(g.ExportToWkb())
+            return g 
+        ct = osr.CoordinateTransformation(Vector.spatialref4(iproj), 
+                                          Vector.spatialref4(oproj))
+        return lambda g: geotrans(g, ct)
+
+    #/************************************************************************/
+    @staticmethod
+    def read_field(layer):
+        featdef = layer.GetLayerDefn()
+        fdindices = range(featdef.GetFieldCount())
+        fielddefs = []
+        for fdindex in fdindices:
+            fielddef = featdef.GetFieldDefn(fdindex)
+            fielddefs.append((fielddef.GetName(), fielddef.GetType()))
+        return fielddefs, fdindices
+
+    #/************************************************************************/
+    @staticmethod
+    def write(arg, **kwargs):
+        """
+        Save shapegeo using the given proj4 and fields in a given file, data
+        source or layer.
+
+        USAGE:
+            write(path, shape=None, src='', dst='', fdpacks=None, fddefs=None, drv=DEF_VECTOR)
+            write(ds, shape=None, src='', dst='', fdpacks=None, fddefs=None)
+            write(layer, shape=None, src='', dst='', fdpacks=None, fddefs=None)
+        """  
+        try:
+            assert isinstance(arg, (string_types,ogr.DataSource,ogr.Layer))
+        except:
+            raise TypeError("Wrong type for input parameter - must be a string, a data source or a layer")
+        iproj, oproj = kwargs.pop('iproj',''), kwargs.pop('oproj','')
+        # any operation on projections ?
+        geom = kwargs.pop('geom',[])
+        # retrieve the layer
+        layer = Vector.newl_ayer(arg, geom=Vector.geom2ogr(geom), 
+                                 proj=iproj or oproj)
+        try:
+            assert layer is not None
+        except:
+            raise IOError("Wrong layer")
+        Vector.write_layer(layer, geom=geom, iproj=iproj, oproj=oproj)
+         
+    #/************************************************************************/
+    @staticmethod
+    def geom2ogr(geom): #
+        """Determine OGR geometry type for layer.
+
+        SYNTAX:
+            ogrgeo = geom2ogr(geom)
+        """
+        geotypes = list(set(type(x) for x in geom))
+        
+        return ogr.wkbUnknown if len(geotypes) > 1 else {
+            geometry.Point: ogr.wkbPoint,
+            geometry.point.PointAdapter: ogr.wkbPoint,
+            geometry.LineString: ogr.wkbLineString,
+            geometry.linestring.LineStringAdapter: ogr.wkbLineString,
+            geometry.Polygon: ogr.wkbPolygon,
+            geometry.polygon.PolygonAdapter: ogr.wkbPolygon,
+            geometry.MultiPoint: ogr.wkbMultiPoint,
+            geometry.multipoint.MultiPointAdapter: ogr.wkbMultiPoint,
+            geometry.MultiLineString: ogr.wkbMultiLineString,
+            geometry.multilinestring.MultiLineStringAdapter: ogr.wkbMultiLineString,
+            geometry.MultiPolygon: ogr.wkbMultiPolygon,
+            geometry.multipolygon.MultiPolygonAdapter: ogr.wkbMultiPolygon,
+        }[geotypes[0]]
+
+    #/************************************************************************/
+    @staticmethod
+    def write_layer(layer, **kwargs):
+        try:
+            assert isinstance(layer, ogr.Layer)
+        except:
+            raise TypeError("Wrong type for input layer - must be an ogr.layer")
+        # validate arguments
+        fdpacks, fddefs = kwargs.pop('packs', []), kwargs.pop('defs', [])
+        if fdpacks and set(len(x) for x in fdpacks) != set([len(fddefs)]):
+            raise IOError("A field definition is required for each field")
+        # make fddefs in featureDefinition
+        [layer.CreateField(ogr.FieldDefn(fdname, fdtype))       \
+             for fdname, fdtype in fddefs]  
+        featdef = layer.GetLayerDefn()        
+        geom = kwargs.pop('geom', [])
+        geotf = Vector.geometry_factory(**kwargs)
+        for shape, field in itertools.izip(geom, fdpacks)       \
+                if fdpacks else ((x, []) for x in geom):
+            featdef = layer.GetLayerDefn()  # prepare feature
+            feature = ogr.Feature(featdef)
+            feature.SetGeometry(geotf(ogr.CreateGeometryFromWkb(shape.wkb)))
+            [feature.SetField(fdindex, fdvalue)  for fdindex, fdvalue in enumerate(field)]          
+            layer.CreateFeature(feature)    # save feature      
+            feature.Destroy()  # clean up
+
+    #/************************************************************************/
+    @staticmethod
+    def write_field(field, **kwargs):
+        """Create a field definition, which can be used to create a field using 
+        the CreateField() function. Simply create a "model" for a field, that can 
+        then be called later.
+        """
+        try:
+            assert isinstance(field, string_types)
+        except:
+            raise TypeError("Wrong type for input field - must be an string")
+        latlon = kwargs.pop('latlon',False)
+        typ_ = kwargs.pop('type',ogr.OFTReal if latlon is True else ogr.OFTInteger)
+        width = kwargs.pop('width', 12 if latlon is True else 10)
+        prec = kwargs.pop('prec', 4 if latlon is True else 6)
+        fieldDefn = ogr.FieldDefn(field, typ_)
+        fieldDefn.SetWidth(width)
+        fieldDefn.SetPrecision(prec)
+        return fieldDefn
+
+
+#==============================================================================
+# Class Raster
+#==============================================================================
+  
+class Raster(object):
+    """Instantiation class for raster data.
+    
+        >>> raster = Raster()
+    """
+    pass
