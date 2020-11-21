@@ -10,22 +10,22 @@
 .. |googletrans| replace:: `googletrans <googletrans_>`_
 
 Module implementing miscenalleous text processing methods, including translation.
-    
+
 **Dependencies**
 
 *require*:      :mod:`os`, :mod:`six`, :mod:`collections`, :mod:`numpy`, :mod:`pandas`
 
 *optional*:     :mod:`googletrans`
 
-*call*:         :mod:`pyeudatnat`         
+*call*:         :mod:`pyeudatnat`
 
 **Contents**
 """
 
-# *credits*:      `gjacopo <jacopo.grazzini@ec.europa.eu>`_ 
+# *credits*:      `gjacopo <jacopo.grazzini@ec.europa.eu>`_
 # *since*:        Thu Apr  9 09:56:45 2020
 
-#%% Settings                
+#%% Settings
 
 import re
 import warnings#analysis:ignore
@@ -45,7 +45,7 @@ else:
     _is_googletrans_installed = True
 
 try:
-    assert False # not used: ignore 
+    assert False # not used: ignore
     import Levenshtein
 except (AssertionError,ImportError):
     _is_levenshtein_installed = False
@@ -109,28 +109,28 @@ LANGS           = { ## alpha-3/ISO 639-2 codes
 # CODELANGS = dict(map(reversed, LANGS.items())) # {v:k for (k,v) in LANGS.items()}
 
 DEFLANG         = 'en'
-  
-  
+
+
 #%% Core functions/classes
 
 #==============================================================================
 # Method isoLang
 #==============================================================================
-   
+
 def isoLang(arg):
     """Given a language or an ISO 639 locale code, return the pair {language,locale}.
-    
+
         >>> text.isoLang(locale_or_language)
     """
     if not (arg is None or isinstance(arg, (string_types,Mapping))):
         raise TypeError("Wrong format for language/locale '%s' - must be a string or a dictionary" % arg)
     elif isinstance(arg, string_types):
-        if arg in LANGS.keys(): 
-            language, locale = None, arg 
+        if arg in LANGS.keys():
+            language, locale = None, arg
         elif arg in LANGS.values():
             language, locale = arg, None
         else:
-            raise IOError("Language/locale '%s' not recognised" % arg)    
+            raise IOError("Language/locale '%s' not recognised" % arg)
     elif isinstance(arg, Mapping):
         locale, language = arg.get('code', None), arg.get('name', None)
     else: # lang is None
@@ -151,7 +151,7 @@ def isoLang(arg):
         except:     language = None
     return {'code': locale, 'name': language}
 
-    
+
 #==============================================================================
 # Class Interpret
 #==============================================================================
@@ -162,11 +162,11 @@ class Interpret(object):
         assert _is_googletrans_installed is True
         UTRANSLATOR = gtrans.Translator() # parameter independent: we use a class variable
     except:     pass
-    
+
     @classmethod
     def detect(cls, *text, **kwargs):
         """Language detection method.
-        
+
             >>> Interpret.detect(*text, **kwargs)
         """
         try:
@@ -174,7 +174,7 @@ class Interpret(object):
         except:
             raise ImportError("'detect' method not available")
         text = (text not in ((None,),()) and text[0])               or \
-                kwargs.pop('text', '')                                
+                kwargs.pop('text', '')
         if isinstance(text, string_types):
             text = [text,]
         if isinstance(text, Sequence) and all([isinstance(t, string_types) for t in text]):
@@ -184,11 +184,11 @@ class Interpret(object):
         else:
             raise TypeError("Wrong format for input text '%s'" % text)
         return [r['lang'] for r in cls.UTRANSLATOR.detect(text)]
-        
+
     @classmethod
     def translate(cls, *text, **kwargs):
         """Translation method.
-        
+
             >>> Interpret.translate(*text, **kwargs)
         """
         try:
@@ -196,7 +196,7 @@ class Interpret(object):
         except:
             raise ImportError("'translate' method not available")
         text = (text not in ((None,),()) and text[0])               or \
-                kwargs.pop('text', '')                                
+                kwargs.pop('text', '')
         if isinstance(text, string_types):
             text = [text,]
         if isinstance(text, Sequence) and all([isinstance(t, string_types) for t in text]):
@@ -212,13 +212,13 @@ class Interpret(object):
             f = kwargs.get('filt')
             try:                    assert callable(f)
             except AssertionError:  pass
-            else:   
+            else:
                 text = [f(t) for t in text]
         if ilang == olang or text == '':
             return text
         return [t.text for t in cls.UTRANSLATOR.translate(text, src=ilang, dest=olang)]
-           
- 
+
+
 #==============================================================================
 # Class TextProcess
 #==============================================================================
@@ -226,7 +226,7 @@ class Interpret(object):
 class TextProcess(object):
     """Text handling and string manipulation.
     """
-    
+
     #/************************************************************************/
     @staticmethod
     def match_close(t1, t2, dist='jaro_winkler'):
@@ -240,14 +240,14 @@ class TextProcess(object):
             distance = getattr(Levenshtein,dist)
         except AttributeError:
             raise AttributeError("Levenshtein distance '%s' not recognised" % distance)
-        else: 
-            return distance(t1.str.upper().str, t2) 
-    
+        else:
+            return distance(t1.str.upper().str, t2)
+
     #/************************************************************************/
     @staticmethod
     def split_at_upper(s, contiguous=True):
         """Text splitting method.
-        
+
         Description
         -----------
         Split a string at uppercase letters
@@ -259,44 +259,44 @@ class TextProcess(object):
             if s[i].isupper() and (not contiguous or lower_around(i)):
                 parts.append(s[start: i])
                 start = i
-        parts.append(s[start:])    
+        parts.append(s[start:])
         return (" ").join(parts)
-    
+
     #/************************************************************************/
     @staticmethod
     def sub_patterns(strings, pattern):
         """Return a list of string matching a certain pattern in a list of strings.
-        
+
             >>> res = sub_patterns(strings, pattern)
         """
-        if pattern in (None,'','(.*)'):     
+        if pattern in (None,'','(.*)'):
             return strings
         else:
             return [s.group() for s in \
                     [re.search(r''+ pattern, st, re.M|re.I) for st in strings] if s]
-    
+
     #/************************************************************************/
     @staticmethod
     def where_match(pattern, strings):
         """Return the indexes of the elements in a list of strings that match a given
         pattern.
-        
+
             >>> resi = where_match(pattern, strings)
-    
+
         Note
         ----
         see also :meth:`first_match`, :meth:`first_non_match`\ .
         """
         return [re.search(pattern, i) for i in strings]
-    
+
     #/************************************************************************/
     @staticmethod
     def first_match(pattern, strings):
-        """Return the index of the first element in a list of strings that matches a 
+        """Return the index of the first element in a list of strings that matches a
         given pattern, or the lenght of that list if no match was found.
-        
+
             >>> resi = first_match(pattern, strings)
-    
+
         Note
         ----
         see also :meth:`first_non_match`, :meth:`where_match`\ .
@@ -306,15 +306,15 @@ class TextProcess(object):
         except:
             first = len(strings) #None
         return first
-    
+
     #/************************************************************************/
     @staticmethod
     def first_non_match(pattern,list_string):
-        """Return the index of the first element in a list of strings that does not 
+        """Return the index of the first element in a list of strings that does not
         match a given pattern, or the lenght of that list if all strings match.
-        
+
             >>> resi = first_non_match(pattern, strings)
-            
+
         Note
         ----
         see also :meth:`first_match`, :meth:`where_match`\ .
