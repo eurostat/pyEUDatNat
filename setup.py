@@ -33,7 +33,7 @@ __THISDIR = os.path.dirname(__file__)
 # Package meta-data.
 
 PACKNAME            = 'pyeudatnat' # this package...
-PACKURL             = 'https://github.com/eurostat/pyeudatnat'
+PACKURL             = 'https://github.com/eurostat/pyEUDatNat'
 DESCRIPTION         = 'Python package supporting the automated harvesting, ingestion and formatting \
     of pan-European datasets made openly available by national/regional/local authorities.'
 VERSION             = None
