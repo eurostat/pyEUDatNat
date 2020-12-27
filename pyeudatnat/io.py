@@ -37,7 +37,7 @@ Module implementing miscenalleous Input/Output methods.
 
 import io, os, sys
 from os import path as osp
-import warnings#analysis:ignore
+import logging
 
 from collections import OrderedDict
 from collections.abc import Mapping, Sequence
@@ -94,7 +94,7 @@ else:
 try:
     import bs4
 except ImportError:
-    # warnings.warn("missing beautifulsoup4 module - visit https://pypi.python.org/pypi/beautifulsoup4", ImportWarning)
+    # logging.warning("missing beautifulsoup4 module - visit https://pypi.python.org/pypi/beautifulsoup4", ImportWarning)
     _is_bs4_installed = False
 else:
     _is_bs4_installed = True
@@ -102,16 +102,16 @@ else:
 try:
     import chardet
 except ImportError:
-    #warnings.warn('\n! missing chardet package (visit https://pypi.org/project/chardet/ !')
+    #logging.warning('\n! missing chardet package (visit https://pypi.org/project/chardet/ !')
     pass
 
 try:
     import geojson#analysis:ignore
 except ImportError:
-    #warnings.warn('\n! missing geosjon package (https://github.com/jazzband/geojson) !')
+    #logging.warning('\n! missing geosjon package (https://github.com/jazzband/geojson) !')
     _is_geojson_installed = False
 else:
-    #warnings.warn('\n! geojson help: https://github.com/jazzband/geojson !')
+    #logging.warning('\n! geojson help: https://github.com/jazzband/geojson !')
     _is_geojson_installed = True
     from geojson import Feature, Point, FeatureCollection
 
@@ -123,8 +123,8 @@ else:
     _is_xml_installed = True
 
 from pyeudatnat import PACKNAME
-from pyeudatnat.misc import Object, Structure
-
+from pyeudatnat.misc import Object, Structure, FileSys#analysis:ignore
+from pyeudatnat.misc import DEF_DATETIMEFMT
 
 FORMATS         = { 'csv':          'csv',
                     'json':         'json',
@@ -140,10 +140,11 @@ FORMATS         = { 'csv':          'csv',
                     'geopackage':   'gpkg',
                     'htmltab':      'htmltab'
                     }
-DEFFORMAT       = 'csv'
 # See Pandas supported IO formats: https://pandas.pydata.org/pandas-docs/stable/user_guide/io.html
 # See also GDAL supported drivers (or fiona.supported_drivers)
-
+DEF_FORMATS     = ['csv', 'json', 'excel', 'table', 'xls', 'html', 'geojson', 'shapefile']
+DEF_FORMAT      = 'csv'
+DEF_INFER_FORMAT = False # DEF_FORMAT
 
 ENCODINGS       = { 'utf-8':       'utf-8',
                     'latin':       'ISO-8859-1',
@@ -151,9 +152,13 @@ ENCODINGS       = { 'utf-8':       'utf-8',
                     'latin1':      'ISO-8859-2',
                     'ISO-8859-2':  'ISO-8859-2'
                     }
-DEFENCODING     = 'latin'
+DEF_ENCODING    = 'utf-8' # 'latin'
 
-DEFSEP          = ';'
+DEF_SEP         = ';'
+
+PROTOCOLS       = ['http', 'https', 'ftp']
+
+COMPRESSIONS    = ['zip', 'gz', 'gzip', 'bz2']
 
 #%% Core functions/classes
 
@@ -188,17 +193,16 @@ class File(object):
             assert fmt is None or isinstance(fmt, string_types)  \
                 or (isinstance(fmt, Sequence) and all([isinstance(f, string_types) for f in fmt]))
         except: raise IOError("Wrong format for FMT parameter: '%s'" % fmt)
-        if fmt is None:                             fmt = list(FORMATS.values())
+        if fmt is None:                             fmt = DEF_FORMATS
         elif isinstance(fmt, string_types):         fmt = [fmt,]
         try:
             assert isinstance(infer_fmt, bool) or isinstance(infer_fmt, string_types) \
                 or (isinstance(infer_fmt, Sequence) and all([isinstance(f, string_types) for f in infer_fmt]))
-        except:
-            raise IOError("Wrong format for INFER_FMT flag: '%s'" % infer_fmt)
+        except:     raise IOError("Wrong format for INFER_FMT flag: '%s'" % infer_fmt)
         if infer_fmt is True: # extend... with all besides those parsed
             infer_fmt = FORMATS.keys()   # default
         elif isinstance(infer_fmt, string_types):
-                infer_fmt = [infer_fmt,]
+            infer_fmt = [infer_fmt,]
         if not infer_fmt is False: # extend... with all besides those parsed
             fmt.extend(infer_fmt) # test all!
         try:
@@ -207,8 +211,7 @@ class File(object):
         fmt = Structure.uniq_items(fmt, items=FORMATS)
         try:
             assert fmt not in (None,[],'')
-        except:
-            raise IOError("Data format FMT not recognised: '%s'" % fmt)
+        except:     raise IOError("Data format FMT not recognised: '%s'" % fmt)
         if isinstance(fmt,string_types):
             fmt = [fmt,]
         return fmt
@@ -242,7 +245,7 @@ class File(object):
     #/************************************************************************/
     @staticmethod
     def is_cached(pathname, time_out): # note: we check a path here
-        if not osp.exists(pathname):
+        if not FileSys.file_exists(pathname): # osp.exists(pathname)
             resp = False
         elif time_out is None:
             resp = True
@@ -253,26 +256,26 @@ class File(object):
         else:
             cur = time.time()
             mtime = os.stat(pathname).st_mtime
-            warnings.warn("\n! %s - last modified: %s !" % (pathname,time.ctime(mtime)))
+            logging.warning("\n! %s - last modified: %s !" % (pathname,time.ctime(mtime)))
             resp = cur - mtime < time_out
         return resp
 
     #/************************************************************************/
     @staticmethod
     def clean_cache(pathname, time_expiration): # note: we clean a path here
-        if not osp.exists(pathname):
+        if not FileSys.file_exists(pathname): # osp.exists(pathname)
             resp = False
         elif time_expiration is None or time_expiration <= 0:
             resp = True
         else:
             cur = time.time()
             mtime = os.stat(pathname).st_mtime
-            warnings.warn("\n! '%s' - last modified: %s !" % (pathname,time.ctime(mtime)))
+            logging.warning("\n! '%s' - last modified: %s !" % (pathname,time.ctime(mtime)))
             resp = cur - mtime >= time_expiration
         if resp is True:
-            warnings.warn("\n! Removing disk file %s !" % pathname)
+            logging.warning("\n! Removing disk file %s !" % pathname)
             if osp.isfile(pathname):
-                os.remove(pathname)
+                os.remove(pathname) # FileSys.remove(pathname)
             elif osp.isdir(pathname):
                 shutil.rmtree(pathname)
 
@@ -292,15 +295,13 @@ class File(object):
         #     raise TypeError("Zip file '%s' not recognised" % file)
         try:
             assert zipfile.is_zipfile(file)
-        except:
-            raise IOError("Zip file '%s' not recognised" % file)
+        except:     raise IOError("Zip file '%s' not recognised" % file)
         path = kwargs.pop('path') if 'path' in kwargs else File.default_cache()
         operators = [op for op in ['open', 'extract', 'extractall', 'getinfo', 'namelist', 'read', 'infolist'] \
                      if op in kwargs.keys()]
         try:
             assert operators in ([],[None]) or sum([1 for op in operators]) == 1
-        except:
-            raise IOError("Only one operation supported per call")
+        except:     raise IOError("Only one operation supported per call")
         else:
             if operators in ([],[None]):
                 operator = 'extractall'
@@ -309,12 +310,11 @@ class File(object):
         if operator in ('infolist','namelist'):
             try:
                 assert kwargs.get(operator) not in (False,None)
-            except:
-                raise IOError("No operation parsed")
+            except:     raise IOError("No operation parsed")
         else:
             members = kwargs.pop(operator, None)
         #if operator.startswith('extract'):
-        #    warnings.warn("\n! Data extracted from zip file will be physically stored on local disk !")
+        #    logging.warning("\n! Data extracted from zip file will be physically stored on local disk !")
         if isinstance(members,string_types):
             members = [members,]
         with zipfile.ZipFile(file) as zf:
@@ -339,9 +339,9 @@ class File(object):
                             assert len(_mem)==1
                         except:
                             if len(_mem) > 1:
-                                warnings.warn("\n! Mulitple files machting in zip source - ambiguity not resolved !" % m)
+                                logging.warning("\n! Mulitple files machting in zip source - ambiguity not resolved !" % m)
                             else: # len(_mem) == 0 <=> _mem = []
-                                warnings.warn("\n! File '%s' not found in zip source !" % m)
+                                logging.warning("\n! File '%s' not found in zip source !" % m)
                             members.pop(i)
                         else:
                             members[i] = _mem[0]
@@ -396,12 +396,10 @@ class Requests(object):
             try:
                 response, _ = Requests.cache_response(url, force, store, expire)
                 response.raise_for_status()
-            except:
-                raise IOError("Wrong request formulated")
+            except:     raise IOError("Wrong request formulated")
         try:
             assert response is not None
-        except:
-            raise IOError("Wrong response retrieved")
+        except:     raise IOError("Wrong response retrieved")
         return response
 
     #/************************************************************************/
@@ -418,15 +416,13 @@ class Requests(object):
             return response
         try:
             assert isinstance(stream,string_types)
-        except:
-            raise TypeError("Wrong format for STREAM parameter")
+        except:     raise TypeError("Wrong format for STREAM parameter")
         else:
             stream = stream.lower()
         try:
             assert stream in ['jsontext', 'jsonbytes', 'resp', 'zip', 'raw', 'content',
                               'text', 'stringio', 'bytes', 'bytesio', 'json']
-        except:
-            raise IOError("Wrong value for STREAM parameter")
+        except:     raise IOError("Wrong value for STREAM parameter")
         else:
             if stream == 'content':
                 stream = 'bytes'
@@ -441,8 +437,7 @@ class Requests(object):
                 except:
                     try:
                         data = response.content
-                    except:
-                        raise IOError("Error JSON-encoding of response")
+                    except:     raise IOError("Error JSON-encoding of response")
                     else:
                         stream = 'jsonbytes' # force
                 else:
@@ -452,33 +447,27 @@ class Requests(object):
         elif stream == 'raw':
             try:
                 data = response.raw
-            except:
-                raise IOError("Error accessing ''raw'' attribute of response")
+            except:     raise IOError("Error accessing ''raw'' attribute of response")
         elif stream in ('text', 'stringio'):
             try:
                 data = response.text
-            except:
-                raise IOError("Error accessing ''text'' attribute of response")
+            except:     raise IOError("Error accessing ''text'' attribute of response")
         elif stream in ('bytes', 'bytesio', 'zip'):
             try:
                 data = response.content
-            except:
-                raise IOError("Error accessing ''content'' attribute of response")
+            except:     raise IOError("Error accessing ''content'' attribute of response")
         if stream == 'stringio':
             try:
                 data = io.StringIO(data)
-            except:
-                raise IOError("Error loading StringIO data")
+            except:     raise IOError("Error loading StringIO data")
         elif stream in ('bytesio', 'zip'):
             try:
                 data = io.BytesIO(data)
-            except:
-                raise IOError("Error loading BytesIO data")
+            except:     raise IOError("Error loading BytesIO data")
         elif stream == 'jsontext':
             try:
                 data = json.loads(data)
-            except:
-                raise IOError("Error JSON-encoding of str text")
+            except:     raise IOError("Error JSON-encoding of str text")
         elif stream == 'jsonbytes':
                 try:
                     data = json.loads(data.decode())
@@ -486,8 +475,7 @@ class Requests(object):
                     try:
                          # assert _is_chardet_installed is True
                         data = json.loads(data.decode(chardet.detect(data)["encoding"]))
-                    except:
-                        raise IOError("Error JSON-encoding of bytes content")
+                    except:     raise IOError("Error JSON-encoding of bytes content")
         return data
 
     #/************************************************************************/
@@ -500,16 +488,14 @@ class Requests(object):
             assert any([urlname.startswith(p) for p in ['http', 'https', 'ftp']]) is True
         except:
             #raise IOError ?
-            warnings.warn("\n! Protocol not encoded in URL !")
+            logging.warning("\n! Protocol not encoded in URL !")
         try:
             response = Requests.get_response(urlname, caching=caching, force=force,
                                              store=store, expire=expire)
-        except:
-            raise IOError("Wrong request for data from URL '%s'" % urlname)
+        except:     raise IOError("Wrong request for data from URL '%s'" % urlname)
         try:
             data = Requests.read_response(response, stream=stream)
-        except:
-            raise IOError("Impossible reading data from URL '%s'" % urlname)
+        except:     raise IOError("Impossible reading data from URL '%s'" % urlname)
         return data
 
 
@@ -524,29 +510,25 @@ class Buffer(object):
     def from_url(urlname, **kwargs): # dumb function
         try:
             return Requests.read_url(urlname, **kwargs)
-        except:
-            raise IOError("Wrong request for data from URL '%s'" % urlname)
+        except:     raise IOError("Wrong request for data from URL '%s'" % urlname)
 
     #/************************************************************************/
     @staticmethod
     def from_zip(file, src=None, **kwargs): # dumb function
         try:
             assert file is None or isinstance(file, string_types)
-        except:
-            raise TypeError("Wrong type for file parameter '%s' - must be a string" % file)
+        except:     raise TypeError("Wrong type for file parameter '%s' - must be a string" % file)
         try:
             assert src is None or isinstance(src, string_types)
-        except:
-            raise TypeError("Wrong type for data source parameter '%s' - must be a string" % src)
+        except:     raise TypeError("Wrong type for data source parameter '%s' - must be a string" % src)
         if src is None:
             src, file = file, None
-        if zipfile.is_zipfile(src) or any([src.endswith(p) for p in ['zip', 'gz', 'gzip', 'bz2'] ]):
+        if zipfile.is_zipfile(src) or any([src.endswith(p) for p in  COMPRESSIONS]):
             try:
                 # file = File.unzip(content, namelist=True)
                 kwargs.update({'open': file}) # when file=None, will read a single file
                 results = File.unzip(src, **kwargs)
-            except:
-                raise IOError("Impossible unzipping content from zipped file '%s'" % src)
+            except:     raise IOError("Impossible unzipping content from zipped file '%s'" % src)
         else:
             results = {src: file}
         return results if len(results.keys())>1 else list(results.values())[0]
@@ -554,7 +536,7 @@ class Buffer(object):
     #/************************************************************************/
     @staticmethod
     def from_vector(name, **kwargs):
-        warnings.warn("\n! Method 'from_vector' for geographical vector data loading not implemented !'")
+        logging.warning("\n! Method 'from_vector' for geographical vector data loading not implemented !'")
         pass
 
     #/************************************************************************/
@@ -565,24 +547,20 @@ class Buffer(object):
         try:
             assert file is None or isinstance(file, string_types)     \
                  or (isinstance(file, Sequence) and all([isinstance(f,string_types) for f in file]))
-        except:
-             raise TypeError("Wrong format for filename - must be a (list of) string(s)")
+        except:     raise TypeError("Wrong format for filename - must be a (list of) string(s)")
         try:
             assert src is None or isinstance(src, string_types)
-        except:
-            raise TypeError("Wrong type for data source parameter '%s' - must be a string" % src)
+        except:     raise TypeError("Wrong type for data source parameter '%s' - must be a string" % src)
         if src is None:
             src, file = file, None
-        if any([src.startswith(p) for p in ['http', 'https', 'ftp'] ]):
+        if any([src.startswith(p) for p in PROTOCOLS]):
             try:
                 content = Requests.read_url(src, **kwargs)
-            except:
-                raise IOError("Wrong request for data source from URL '%s'" % src)
+            except:     raise IOError("Wrong request for data source from URL '%s'" % src)
         else:
             try:
                 assert osp.exists(src) is True
-            except:
-                raise IOError("Data source '%s' not found on disk" % src)
+            except:     raise IOError("Data source '%s' not found on disk" % src)
             else:
                 content = src
         # opening and parsing files from zipped source to transform
@@ -593,12 +571,12 @@ class Buffer(object):
             kwargs.update({'extract': file, 'path': path})
         else:
             kwargs.update({'open': file}) # when file=None, will read a single file
-        if zipfile.is_zipfile(content) or any([src.endswith(p) for p in ['zip', 'gz', 'gzip', 'bz2'] ]):
+        if (zipfile.is_zipfile(content) or any([src.endswith(p) for p in COMPRESSIONS])) \
+            and osp.splitext(content)[1] != ".xlsx":
             try:
                 # file = File.unzip(content, namelist=True)
                 results = File.unzip(content, **kwargs)
-            except:
-                raise IOError("Impossible unzipping content from zipped file '%s'" % src)
+            except:     raise IOError("Impossible unzipping content from zipped file '%s'" % src)
         else:
             results = {file: content}
         # with 'extract', the normalised path to the file is returned
@@ -625,21 +603,17 @@ class Frame(object):
         """
         try:
             assert column in df.columns
-        except:
-            raise IOError("Wrong input column - must be in the dataframe")
+        except:     raise IOError("Wrong input column - must be in the dataframe")
         try:
             assert otype is None or (ofmt is None and ifmt is None)
-        except:
-            raise IOError("Incompatible option OTYPE with IFMT and OFMT")
+        except:     raise IOError("Incompatible option OTYPE with IFMT and OFMT")
         try:
             assert (otype is None or isinstance(otype, type) is True)
-        except:
-            raise TypeError("Wrong format for input cast type")
+        except:     raise TypeError("Wrong format for input cast type")
         try:
             assert (ofmt is None or isinstance(ofmt, string_types))     \
                 and (ifmt is None or isinstance(ifmt, string_types))
-        except:
-            raise TypeError("Wrong format for input date templates")
+        except:     raise TypeError("Wrong format for input date templates")
         if otype is not None:
             if otype == df[column].dtype:
                 return df[column]
@@ -658,6 +632,7 @@ class Frame(object):
                 return df[column].astype(str)
             else:
                 try:
+                    ifmt = ifmt or DEF_DATETIMEFMT
                     f = lambda s: datetime.strptime(s, ifmt, **kwargs).strftime(ofmt)
                     return df[column].astype(str).apply(f)
                 except:
@@ -671,8 +646,7 @@ class Frame(object):
         try:
             assert columns is None or isinstance(columns, string_types)     or \
                 (isinstance(columns, Sequence) and all([isinstance(c,string_types) for c in columns]))
-        except:
-            raise IOError("Wrong format for input columns")
+        except:     raise TypeError("Wrong format for input columns")
         if isinstance(columns, string_types):
             columns == [columns,]
         if columns in (None,[]):
@@ -683,24 +657,41 @@ class Frame(object):
 
     #/************************************************************************/
     @staticmethod
-    def to_geojson(df, columns=None, latlon=['lat', 'lon']):
+    def to_geojson(df, columns=None, latlon=None):
         """GEOJSON output formatting.
         """
         try:
-            assert columns is None or isinstance(columns, string_types)     or \
-                (isinstance(columns, Sequence) and all([isinstance(c,string_types) for c in columns]))
-        except:
-            raise IOError("Wrong format for input columns")
+            assert columns is None                                          \
+                or (isinstance(columns, Sequence) and all([isinstance(c,string_types) for c in columns]))
+        except:     raise TypeError("Wrong format for input COLUMNS")
         try:
-            lat, lon = latlon
-            assert isinstance(lat, string_types) and isinstance(lon, string_types)
-        except:
-            raise TypeError("Wrong format for input lat/lon columns")
+            assert latlon is None or isinstance(latlon,string_types)        \
+                or (isinstance(latlon, Sequence) and all([isinstance(l,string_types) for l in latlon]))
+        except:     raise TypeError("Wrong format for input LATLON columns")
+        if latlon is None:
+            try:
+                assert 'lat' in df.columns and 'lon' in df.columns
+            except:
+                try:
+                    assert 'latitude' in df.columns and 'longitude' in df.columns
+                except:     raise IOError("No LATLON columns parsed as latitude/longitude coordinates")
+                else:
+                    lat, lon = 'latitude', 'latitude'
+            else:
+                lat, lon = 'lat', 'lon'
+        else:
+            try:
+                lat, lon = latlon
+                assert lat in df.columns and lon in df.columns
+            except:     raise IOError("LATLON columns '%s' not found in the input dataset" % list(latlon))
         if isinstance(columns, string_types):
             columns == [columns,]
         if columns in (None,[]):
             columns = list(set(df.columns))
-        columns = list(set(columns).intersection(set(df.columns)).difference(set([lat,lon])))
+        columns = list(set(columns)
+                       .intersection(set(df.columns))
+                       .difference(set([lat,lon]))
+                       )
         # df.reindex(columns = columns) # not necessary
         if _is_geojson_installed is True:
             features = df.apply(
@@ -710,6 +701,7 @@ class Frame(object):
             # properties = df.drop([lat, lon], axis=1).to_dict('records')
             geom = FeatureCollection(features=features, properties=properties)
         else:
+            # see https://geoffboeing.com/2015/10/exporting-python-data-geojson/
             geom = {'type':'FeatureCollection', 'features':[]}
             for _, row in df.iterrows():
                 feature = {'type':'Feature',
@@ -727,41 +719,46 @@ class Frame(object):
     def to_xml(filename):
         """
         """
-        warnings.warn("\n! Method 'to_xml' for xml data writing not implemented !")
+        logging.warning("\n! Method 'to_xml' for xml data writing not implemented !")
         pass
 
     #/************************************************************************/
     @staticmethod
     def to_file(df, dest, **kwargs):
         ofmt = kwargs.pop('fmt', None)
-        infer_fmt = kwargs.pop('infer_fmt', False)
+        infer_fmt = kwargs.pop('infer_fmt', DEF_INFER_FORMAT)
         if infer_fmt is True:
             infer_fmt = ['csv', 'json', 'excel', 'geojson', 'xls'] # list(FORMATS.values())
         try:
             ofmt = File.check_format(ofmt, infer_fmt = infer_fmt)
-        except:
-            raise IOError("Data format FMT not recognised: '%s'" % ofmt)
-        encoding = kwargs.pop('encoding', None) or kwargs.pop('enc', None) or 'utf-8'
+        except:     raise IOError("Data format FMT not recognised: '%s'" % ofmt)
         def _to_csv(df, d, **kw):
-            nkw = Object.inspect_kwargs(kw, pd.to_csv)
+            nkw = Object.inspect_kwargs(kw, pd.DataFrame.to_csv)
             df.to_csv(d, **nkw)
         def _to_excel(df, d, **kw):
-            nkw = Object.inspect_kwargs(kwargs, pd.to_excel)
+            nkw = Object.inspect_kwargs(kw, pd.DataFrame.to_excel)
             df.to_excel(d, **nkw)
         def _to_json(df, d, **kw):
-            nkw = Object.inspect_kwargs(kwargs, Frame.to_json)
+            enc = kw.pop('encoding', None) or kw.pop('enc', None) or 'utf-8'
+            asc = kw.pop('ensure_ascii', False)
+            nkw = Object.inspect_kwargs(kw, Frame.to_json)
             res = Frame.to_json(df, **nkw)
-            with open(d, 'w', encoding=encoding) as f:
-                json.dump(res, f, ensure_ascii=False)
+            with open(d, 'w', encoding = enc) as f:
+                Json.dump(res, f) #ensure_ascii=False)
         def _to_geojson(df, d, **kw):
-            if _is_geojson_installed is True:
-                nkw = Object.inspect_kwargs(kwargs, gpd.to_file)
+            if isinstance(df, gpd.GeoSeries):
+                nkw = Object.inspect_kwargs(kw, gpd.GeoSeries.to_file)
+                df.to_file(d, driver='GeoJSON', **nkw)
+            elif isinstance(df, gpd.GeoDataFrame):
+                nkw = Object.inspect_kwargs(kw, gpd.GeoDataFrame.to_file)
                 df.to_file(d, driver='GeoJSON', **nkw)
             else:
-                nkw = Object.inspect_kwargs(kwargs, Frame.to_json)
-                res = Frame.to_json(df, **nkw)
-                with open(d, 'w', encoding=encoding) as f:
-                    json.dump(res, f, ensure_ascii=False)
+                nkw = Object.inspect_kwargs(kw, Frame.to_geojson)
+                res = Frame.to_geojson(df, **nkw)
+                enc = kw.pop('encoding', None) or kw.pop('enc', None) or DEF_ENCODING
+                asc = kw.pop('ensure_ascii', False)
+                with open(d, 'w', encoding = enc) as f:
+                    Json.dump(res, f, ensure_ascii = asc)
         def _to_geopackage(df, d, **kw):
             nkw = Object.inspect_kwargs(kwargs, gpd.to_file)
             df.to_file(d, driver='GPKG', **nkw)
@@ -773,16 +770,17 @@ class Frame(object):
                     }
         for f in ofmt:
             try:
-                assert not osp.exists(dest)
+                assert not FileSys.file_exists(dest)
             except:
-                warnings.warn("\n! Output file '%s' already exist - will be overwritten")
+                logging.warning("\n! Output file '%s.%s' already exist - will be overwritten" %
+                              (FileSys.basename(dest),f))
             try:
-                fundumps[f](dest, **kwargs)
+                fundumps[f](df, dest, **kwargs)
             except:
-                warnings.warn("\n! Impossible to write to %s !" % f.upper())
+                logging.warning("\n! Impossible to write to %s !" % f.upper())
             else:
-                if ofmt == f:       return
-                else:               ofmt.remove(f)
+                if ofmt == f or ofmt == [f]:        return
+                else:                               ofmt.remove(f)
         raise IOError("Impossible to save data - input format not recognised")
 
     #/************************************************************************/
@@ -792,20 +790,17 @@ class Frame(object):
         """
         try:
             assert _is_bs4_installed is True
-        except:
-            raise IOError("'from_html' method not available")
+        except:     raise IOError("'from_html' method not available")
         parser = kwargs.get('kwargs','html.parser')
         if parser not in ('html.parser','html5lib','lxml'):
             raise IOError("Unknown soup parser")
         try:
             raw = bs4.BeautifulSoup(htmlname, parser)
             #raw = bs4.BeautifulSoup(html, parser).get_text()
-        except:
-            raise IOError("Impossible to read HTML page")
+        except:     raise IOError("Impossible to read HTML page")
         try:
             tables = raw.findAll('table', **kwargs)
-        except:
-            raise IOError("Error with soup from HTML page")
+        except:     raise IOError("Error with soup from HTML page")
         headers, rows = [], []
         for table in tables:
             try:
@@ -824,8 +819,7 @@ class Frame(object):
         """
         try:
             assert _is_xml_installed is True
-        except:
-            raise IOError("'from_xml' method not available")
+        except:     raise IOError("'from_xml' method not available")
         #root = et.XML(filename) # element tree
         #records = []
         #for i, child in enumerate(root):
@@ -847,19 +841,27 @@ class Frame(object):
 
     #/************************************************************************/
     @staticmethod
-    def from_data(src, **kwargs):
+    def from_data(data, src=None, **kwargs):
         """
         """
         ifmt = kwargs.pop('fmt', None)
-        infer_fmt= kwargs.pop('infer_fmt', False)
-        if infer_fmt is True:
-            # note that the default infer_fmt here may differ from the one in
-            # from_file method
-            infer_fmt = ['csv', 'json', 'excel', 'sql', 'html', 'table']
+        try:
+            assert (ifmt is None and src is not None)
+            ifmt = osp.splitext(src)[-1].replace('.','').lower()
+        except:
+            pass
+        infer_fmt= kwargs.pop('infer_fmt', DEF_INFER_FORMAT)
+        try:
+            assert infer_fmt is True
+            # infer_fmt = ['csv', 'json', 'excel', 'sql', 'html', 'table']
+            infer_fmt = DEF_FORMATS # = list(FORMATS.values())
+        except:
+            pass
         try:
             ifmt = File.check_format(ifmt, infer_fmt = infer_fmt)
-        except:
-            raise IOError("Data format FMT not recognised: '%s'" % ifmt)
+        except:     raise IOError("Data format FMT not recognised: '%s'" % ifmt)
+        #kwargs.update({'dtype': kwargs.pop('dtype', object),
+        #               'compression': kwargs.pop('compression','infer')})
         def _read_csv(s, **kw):
             nkw = Object.inspect_kwargs(kw, pd.read_csv)
             return pd.read_csv(s, **nkw)
@@ -895,7 +897,7 @@ class Frame(object):
             try:
                 assert osp.exists(s) is True # Misc.File.file_exists(s)
             except:
-                warnings.warn("\n! GeoPandas reads URLs and files on disk only - set flags on_disk=True and ignore_buffer=True when loading sourc")
+                logging.warning("\n! GeoPandas reads URLs and files on disk only - set flags on_disk=True and ignore_buffer=True when loading sourc")
             try:
                 p, f = osp.dirname(s), osp.basename(os.path.splitext(s)[0])
             except:
@@ -905,8 +907,8 @@ class Frame(object):
                     and (osp.exists(osp.join(p,'%s.prj' % f)) or osp.exists(osp.join(p,'%s.PRJ' % f)))  \
                     and (osp.exists(osp.join(p,'%s.dbf' % f)) or osp.exists(osp.join(p,'%s.DBF' % f)))
             except AssertionError:
-                warnings.warn("\n! Companion files [.dbf, .shx, .prj] are required together with shapefile source"
-                              " - add companion files to path, e.g. set flags fmt='csv' and 'infer_fmt'=False when loading source")
+                logging.warning("\n! Companion files [.dbf, .shx, .prj] are required together with shapefile source"
+                                " - add companion files to path, e.g. set flags fmt='csv' and 'infer_fmt'=False when loading source")
             except:
                 pass
             nkw = Object.inspect_kwargs(kw, gpd.read_file)
@@ -942,13 +944,12 @@ class Frame(object):
                     }
         for f in ifmt:
             try:
-                df = funloads[f](src, **kwargs)
+                df = funloads[f](data, **kwargs)
             except FileNotFoundError:
                 raise IOError("Impossible to load source data - file '%s' not found" % src)
-            except:
-                pass
+            except:     pass
             else:
-                # warnings.warn("\n! '%s' data loaded in dataframe !" % f.upper())
+                # logging.warning("\n! '%s' data loaded in dataframe !" % f.upper())
                 return df
         raise IOError("Impossible to load source data - format not recognised")
 
@@ -959,12 +960,10 @@ class Frame(object):
         """
         try:
             data = Requests.read_url(urlname, **kwargs)
-        except:
-            raise IOError("Wrong request for data from URL '%s'" % urlname)
+        except:     raise IOError("Wrong request for data from URL '%s'" % urlname)
         try:
             return Frame.from_data(data **kwargs)
-        except:
-            raise IOError("Wrong formatting of online data into dataframe")
+        except:     raise IOError("Wrong formatting of online data into dataframe")
 
     #/************************************************************************/
     @staticmethod
@@ -973,8 +972,7 @@ class Frame(object):
         """
         try:
             assert zipfile.is_zipfile(file)
-        except:
-            raise TypeError("Zip file '%s' not recognised" % file)
+        except:     raise TypeError("Zip file '%s' not recognised" % file)
         #kwargs.update({'read': kwargs.pop('file', None)})
         #try:
         #    data = File.unzip(file, **kwargs) # when None, and single file, read it
@@ -987,8 +985,7 @@ class Frame(object):
         try:
             assert members is None or isinstance(members,string_types) \
                 or (isinstance(members,Sequence) and all([isinstance(m,string_types) for m in members]))
-        except:
-            raise TypeError("Wrong member '%s' not recognised" % members)
+        except:     raise TypeError("Wrong member '%s' not recognised" % members)
         else:
             if isinstance(members,string_types):
                 members = [members,]
@@ -1018,96 +1015,54 @@ class Frame(object):
                 try:
                     with zf.open(m) as zm:
                         df = Frame.from_data(zm, **kwargs)
-                except:
-                    raise IOError("Data %s cannot be read in source file... abort!" % m)
+                except:     raise IOError("Data %s cannot be read in source file... abort!" % m)
                 else:
                     results.update({m: df})
         return results if len(results.keys())>1 else list(results.values())[0]
 
     #/************************************************************************/
     @staticmethod
-    def from_file(file, src=None, **kwargs):
-        """
-        Keyword arguments
-        -----------------
-        on_disk : bool
-        stream : 'str'
-        infer_fmt : bool
-        fmt : str
-        """
-        ifmt = kwargs.pop('fmt', None)
-        infer_fmt = kwargs.pop('infer_fmt', False)
-        # stream = kwargs.pop('stream', None)'
-        # on_disk = kwargs.pop('on_disk', False)'
-        if infer_fmt is True:
-            # note that the default infer_fmt here may differ from the one
-            # in from_data method
-            infer_fmt = ['csv', 'json', 'excel', 'html', 'geojson', 'shapefile', 'table'] # list(FORMATS.values())
+    def from_buffer(buffer, **kwargs):
+        data = None
         try:
-            ifmt = File.check_format(ifmt, infer_fmt = infer_fmt)
-        except:
-            raise IOError("Data format FMT not recognised: '%s'" % ifmt)
-        else:
-            infer_fmt = False # update to avoid doing it again in from_data method
-        # try:
-        #     assert src is None or isinstance(src, string_types)
-        # except:
-        #     raise TypeError("Wrong type for data source parameter '%s' - must be a string" % src)
-        # try:
-        #     assert file is None or isinstance(file, string_types)
-        # except:
-        #     raise TypeError("Wrong type for file parameter '%s' - must be a string" % file)
-        # if src is None:
-        #     src, file = file, None
-        # if any([src.startswith(p) for p in ['http', 'https', 'ftp'] ]):
-        #     try:
-        #         data = Requests.read_url(src, **kwargs)
-        #     except:
-        #         raise IOError("Wrong request for data source from URL '%s'" % src)
-        # else:
-        #     try:
-        #         assert osp.exists(src) is True
-        #     except:
-        #         raise IOError("Data source '%s' not found on disk" % src)
-        #     else:
-        #         data = src
-        ## transforming files in zipped source directly into dataframe while
-        ## unziping with from_zip
-        # if zipfile.is_zipfile(data) or any([src.endswith(p) for p in ['zip', 'gz', 'gzip', 'bz2'] ]):
-        #     try:
-        #         return Frame.from_zip(data, file, **kwargs)
-        #     except:
-        #         raise IOError("Impossible unzipping data from zipped file '%s'" % src)
-        # else:
-        #     try:    fmt = os.path.splitext(src)[-1].replace('.','')
-        #     except: pass
-        #     else:   kwargs.update({'fmt':fmt, 'infer_fmt': False})
-        #     try:
-        #         return Frame.from_data(data, **kwargs)
-        #     except:
-        #         raise IOError("Wrong formatting of source data into dataframe")
-        # fetching opening and parsing files from source to transform them into
-        # dataframes
-        buffer = Buffer.from_file(file, src=src, **kwargs)
-        if isinstance(buffer,string_types) or not isinstance(buffer,Mapping):
-            buffer = {file: buffer}
-        results = {}
-        for file, data in buffer.items():
-            ext = os.path.splitext(file)[-1].replace('.','').lower()
-            if not(ifmt is None or ext in ifmt):
-                warnings.warn("\n! File '%s' will not be loaded !" % file)
-                continue
-            else:
-                fmt = ext
-            kwargs.update({'fmt': fmt, 'infer_fmt': infer_fmt})
+            assert Object.is_subclass(buffer, (io.RawIOBase,io.BufferedIOBase,io.FileIO))
+            data = Frame.from_data(io.BytesIO(buffer.read()), **kwargs)
+        except AssertionError:
             try:
-                results.update({file: Frame.from_data(data, **kwargs)})
-                # not that this will work for zipfile but it is not generic, contraty
-                # to the one above:
-                #  results.update({file: Frame.from_data(io.BytesIO(data.read()), **kwargs)})
+                assert Object.is_subclass(buffer, io.TextIOBase)
+                data = Frame.from_data(io.StringIO(buffer.read()), **kwargs)
+            except AssertionError:
+                try:
+                    assert Object.has_method(buffer, 'read')
+                    data = Frame.from_data(buffer.read(), **kwargs)
+                except:     pass
+        finally:
+            try:
+                assert data is not None
+            except AssertionError:
+                try:
+                    data = Frame.from_data(buffer, src = buffer, **kwargs)
+                except:
+                    # raise IOError("Wrong formatting of source data into dataframe")
+                    logging.warning("Wrong formatting of source data into dataframe")
+        return data
+
+    #/************************************************************************/
+    @staticmethod
+    def from_file(file, src = None, **kwargs):
+        """
+        """
+        buffer = Buffer.from_file(file, src = src, **kwargs)
+        if isinstance(buffer,string_types) or not isinstance(buffer,Mapping):
+            buffer = {buffer: buffer}
+        results = {}
+        for s, buff in buffer.items():
+            try:
+                data = Frame.from_data(buff, src = s, **kwargs)
             except:
-                raise IOError("Wrong formatting of source data into dataframe")
-        return results if len(results.keys())>1 else list(results.values())[0]
+                data = Frame.from_buffer(buff, **kwargs)
+            results.update({s: data})
+        return results if len(results.keys())>1 else results[s]
 
 
 #==============================================================================
