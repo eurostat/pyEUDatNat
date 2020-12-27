@@ -272,6 +272,20 @@ class TextProcess(object):
 
     #/************************************************************************/
     @staticmethod
+    def join(strings, delim = ' '):
+        """Join method that deals with empty strings
+
+        Example
+        -------
+            >>> strings = ['a','  ','b', None, 'c']
+            >>> Text.join(strings, delim = ', ')
+                'a, b, c'
+        """
+        return delim.join(filter(lambda s: (s or '').strip(),
+                                 [s.strip() for s in strings]))
+
+    #/************************************************************************/
+    @staticmethod
     def sub_patterns(strings, pattern):
         """Return a list of string matching a certain pattern in a list of strings.
 
