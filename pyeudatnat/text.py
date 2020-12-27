@@ -28,7 +28,7 @@ Module implementing miscenalleous text processing methods, including translation
 #%% Settings
 
 import re
-import warnings#analysis:ignore
+import logging
 
 from collections import OrderedDict
 from collections.abc import Mapping, Sequence
@@ -38,10 +38,10 @@ try:
     assert True
     import googletrans as gtrans
 except (AssertionError,ImportError):
-    #warnings.warn('\n! missing googletrans package (https://github.com/ssut/py-googletrans) - Translations not available !')
+    # logging.warning('\n! missing googletrans package (https://github.com/ssut/py-googletrans) - Translations not available !')
     _is_googletrans_installed = False
 else:
-    # warnings.warn('\n! googletrans help: https://py-googletrans.readthedocs.io/en/latest !')
+    # logging.warning('\n! googletrans help: https://py-googletrans.readthedocs.io/en/latest !')
     _is_googletrans_installed = True
 
 try:
@@ -49,9 +49,9 @@ try:
     import Levenshtein
 except (AssertionError,ImportError):
     _is_levenshtein_installed = False
-    # warnings.warn('\n! missing python-Levenshtein package (http://github.com/ztane/python-Levenshtein) - Text matching not available !')
+    # logging.warning('\n! missing python-Levenshtein package (http://github.com/ztane/python-Levenshtein) - Text matching not available !')
 else:
-    # warnings.warn('\n! Levenshtein help: https://rawgit.com/ztane/python-Levenshtein/master/docs/Levenshtein.html !')
+    # logging.warning('\n! Levenshtein help: https://rawgit.com/ztane/python-Levenshtein/master/docs/Levenshtein.html !')
     _is_levenshtein_installed = True
 
 from pyeudatnat import COUNTRIES#analysis:ignore
@@ -108,7 +108,7 @@ LANGS           = { ## alpha-3/ISO 639-2 codes
                     }
 # CODELANGS = dict(map(reversed, LANGS.items())) # {v:k for (k,v) in LANGS.items()}
 
-DEFLANG         = 'en'
+DEF_LANG        = 'en'
 
 
 #%% Core functions/classes
@@ -137,7 +137,7 @@ def isoLang(arg):
         language, locale = None, None
     if locale in ('', None) and language in ('', None):
         try:
-            lang = {'code': DEFLANG, 'name': LANGS[DEFLANG]} # not implemented
+            lang = {'code': DEF_LANG, 'name': LANGS[DEF_LANG]} # not implemented
         except:     language, locale = None, None
         else:
             locale, language = lang.get('code',None), lang.get('name',None)
@@ -162,6 +162,8 @@ class Interpret(object):
         assert _is_googletrans_installed is True
         UTRANSLATOR = gtrans.Translator() # parameter independent: we use a class variable
     except:     pass
+    #else: # see https://github.com/ssut/py-googletrans/issues/257
+    #    UTRANSLATOR.raise_Exception = True
 
     @classmethod
     def detect(cls, *text, **kwargs):
@@ -183,7 +185,10 @@ class Interpret(object):
             return
         else:
             raise TypeError("Wrong format for input text '%s'" % text)
-        return [r['lang'] for r in cls.UTRANSLATOR.detect(text)]
+        try:
+            return [r.lang for r in [cls.UTRANSLATOR.detect(t) for t in text]]
+        except:
+            return [r['lang'] for r in cls.UTRANSLATOR.detect(text)]
 
     @classmethod
     def translate(cls, *text, **kwargs):
@@ -205,7 +210,7 @@ class Interpret(object):
             return
         else:
             raise TypeError("Wrong format for input text '%s'" % text)
-        ilang, olang = kwargs.pop('ilang', None), kwargs.pop('olang', DEFLANG)
+        ilang, olang = kwargs.pop('ilang', None), kwargs.pop('olang', DEF_LANG)
         if not (isinstance(ilang, string_types) and isinstance(olang, string_types)):
             raise TypeError("Languages not recognised")
         if 'filt' in kwargs:
@@ -216,7 +221,10 @@ class Interpret(object):
                 text = [f(t) for t in text]
         if ilang == olang or text == '':
             return text
-        return [t.text for t in cls.UTRANSLATOR.translate(text, src=ilang, dest=olang)]
+        try:
+            return [t.text for t in [cls.UTRANSLATOR.translate(_, src=ilang, dest=olang) for _ in text]]
+        except:
+            return [t.text for t in cls.UTRANSLATOR.translate(text, src=ilang, dest=olang)]
 
 
 #==============================================================================
