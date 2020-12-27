@@ -129,7 +129,7 @@ CODERS          = __CODERS                                                      
                     or __CODERS # at the end, CODERS will be equal to __CODERS after its updates
 
 # default geocoder... but this can be reset when declaring a subclass
-DEF_CODER       = {'Bing' : None} # 'GISCO', 'Nominatim', 'GoogleV3', 'GMaps', 'GPlace', 'GeoNames'
+DEF_CODER       = {'Nominatim': None} # {'Bing' : None}
 
 DRIVERS         = {gdal.GetDriver(i).ShortName: gdal.GetDriver(i).LongName
                    for i in range(gdal.GetDriverCount())}
@@ -227,7 +227,11 @@ class Service(object):
         elif isinstance(arg, string_types):
             coder, key = arg, None
         elif isinstance(arg, Mapping):
-            coder, key = list(arg.items())[0]
+            if 'coder' in arg and arg['coder'] in CODERS.keys():
+                # arg already of the form: {'coder': coder, CODERS[coder]: key}
+                return arg
+            else:
+                coder, key = list(arg.items())[0]
         try:
             assert coder in CODERS
         except:
@@ -240,8 +244,10 @@ class Service(object):
             except:
                 raise IOError("No geocoder available")
             else:
-                coder, key = 'Bing', None
-        return {'coder': coder, CODERS[coder]: key}
+                coder, key = DEF_CODER.items()
+        coder = {'coder': coder, CODERS[coder]: key}
+        coder.pop(None, None)
+        return coder
 
     #/************************************************************************/
     def __init__(self, *args,  **kwargs):
@@ -255,7 +261,7 @@ class Service(object):
             coder = kwargs.pop('coder', DEF_CODER) # None
         self.geocoder = self.select_coder(coder)
         coder = self.geocoder['coder']
-        key = CODERS[coder]
+        key = CODERS.get(coder)
         try:
             assert _is_happy_installed is True
         except: # _is_geopy_installed is True and, hopefully, coder not in ('osm','GISCO')
@@ -266,27 +272,30 @@ class Service(object):
             except:
                 raise IOError("Coder not available")
             else:
-                self.geoserv = gc(**{key: self.geocoder[key]})
+                if key is None:
+                    self.client = gc()
+                else:
+                    self.client = gc(**{key: self.geocoder[key]})
         else:
             if coder.lower() == 'osm':
                 kwargs.pop('exactly_one')
-                self.geoserv = services.OSMService()
+                self.client = services.OSMService()
             elif coder.lower() == 'gisco':
                 kwargs.pop('exactly_one')
-                self.geoserv = services.GISCOService()
+                self.client = services.GISCOService()
             else:
                 kwargs.pop('exactly_one')
-                self.geoserv = services.APIService(**self.geocoder)
+                self.client = services.APIService(**self.geocoder)
         self.crs, self.proj = None, None # no use
 
     #/************************************************************************/
     def __getattr__(self, attr):
         if attr in ('im_class','__objclass__'):
-            return getattr(self.geoserv, '__class__')
+            return getattr(self.client, '__class__')
         elif attr.startswith('__'):  # to avoid some bug of the pylint editor
             try:        return object.__getattribute__(self, attr)
             except:     pass
-        try:        return getattr(self.geoserv, attr)
+        try:        return getattr(self.client, attr)
         except:     raise IOError("Attribute '%s' not available" % attr)
 
     #/************************************************************************/
@@ -311,6 +320,10 @@ class Service(object):
             raise ImportError("'locate' method not available")
         if 'place' in kwargs:
             place = (kwargs.pop('place', ''),)
+        try:
+            assert isinstance(place[0], (string_types,Sequence))
+        except AssertionError:
+            raise TypeError("Wrong type of PLACE columns name(s) '%s'" % place)
         kwargs.update({'order': 'lL', 'unique': True,
                       'exactly_one': True})
         if _is_happy_installed is True:
@@ -318,13 +331,16 @@ class Service(object):
                 kwargs.pop('exactly_one')
             else:
                 kwargs.pop('exactly_one')
-            return self.geoserv.place2coord(place, **kwargs)
-        else: # _is_geopy_installed is True
-            kwargs.pop('unique', None) # just drop the key
-            order = kwargs.pop('order', 'lL')
-            loc = self.geoserv.geocode(place, **kwargs) # self.geoserv._gc.geocode(place, **kwargs)
-            lat, lon = loc.get('latitude'), loc.get('longitude')
-            return [lat,lon] if order == 'lL' else [lon, lat]
+            return self.client.place2coord(place, **kwargs)
+        # _is_geopy_installed is True
+        kwargs.pop('unique', None) # just drop the key
+        order = kwargs.pop('order', 'lL')
+        try:
+            loc = self.client.geocode(place, **kwargs) # self.geoserv._gc.geocode(place, **kwargs)
+            lat, lon = loc.latitude, loc.longitude
+        except:
+            lat = lon = np.nan
+        return [lat,lon] if order == 'lL' else [lon, lat]
 
     #/************************************************************************/
     def project(self, *coord, **kwargs):
@@ -352,7 +368,7 @@ class Service(object):
             return coord
         try:
             # assert _is_happy_installed is True
-            return self.geoserv.coordproject(coord, iproj=iproj, oproj=oproj)
+            return self.client.coordproject(coord, iproj=iproj, oproj=oproj)
         except:
             try:
                 # assert _is_pyproj_installed is True
