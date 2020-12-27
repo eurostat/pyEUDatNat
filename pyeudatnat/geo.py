@@ -13,28 +13,28 @@
 .. _pyproj: https://github.com/pyproj4/pyproj)
 .. |pyproj| replace:: `pyproj <pyproj_>`_
 
-Module implementing miscenalleous useful methods, including translation and text 
+Module implementing miscenalleous useful methods, including translation and text
 processing.
-    
+
 **Dependencies**
 
 *require*:      :mod:`os`, :mod:`six`, :mod:`collections`, :mod:`numpy`, :mod:`pandas`
 
 *optional*:     :mod:`geopy`, :mod:`happygisco`, :mod:`pyproj`
 
-*call*:         :mod:`pyeudatnat`         
+*call*:         :mod:`pyeudatnat`
 
 **Contents**
 """
 
-# *credits*:      `gjacopo <jacopo.grazzini@ec.europa.eu>`_ 
+# *credits*:      `gjacopo <jacopo.grazzini@ec.europa.eu>`_
 # *since*:        Thu Apr  9 09:56:45 2020
 
-#%% Settings           
+#%% Settings
 
 import io, sys
 from os import path as osp
-import warnings#analysis:ignore
+import logging
 
 from collections import OrderedDict, Mapping, Sequence#analysis:ignore
 import functools, itertools
@@ -47,19 +47,19 @@ import numpy as np#analysis:ignore
 import pandas as pd#analysis:ignore
 
 try:
-    from osgeo import gdal, gdal_array, gdalconst 
+    from osgeo import gdal, gdal_array, gdalconst
     from osgeo import osr, ogr
 except ImportError:
     try:
         import gdal, gdal_array, gdalconst
         import ogr, osr
     except ImportError:
-        #warnings.warn('\n! Missing gdal package (https://pcjericks.github.io/py-gdalogr-cookbook/index.html) !')
+        # logging.warning('\n! Missing gdal package (https://pcjericks.github.io/py-gdalogr-cookbook/index.html) !')
         class gdal():
             GetDriverCount = lambda *args: 0
             GetDriver = lambda *args: None
 
-try: 
+try:
     import rasterio
 except ImportError:
     pass
@@ -75,75 +75,76 @@ try:
     import happygisco#analysis:ignore
 except (AssertionError,ImportError):
     _is_happy_installed = False
-    #warnings.warn('\n! Missing happygisco package (https://github.com/eurostat/happyGISCO) - GISCO web services not available !')
+    # logging.warning('\n! Missing happygisco package (https://github.com/eurostat/happyGISCO) - GISCO web services not available !')
 else:
-    # warnings.warn('\n! happygisco help: hhttp://happygisco.readthedocs.io/ !')
+    # logging.warning('\n! happygisco help: hhttp://happygisco.readthedocs.io/ !')
     _is_happy_installed = True
     from happygisco import services
     # CODERS = {'GISCO':None, 'osm':None})
 
 try:
-    import geopy#analysis:ignore 
-except ImportError: 
+    import geopy#analysis:ignore
+except ImportError:
     _is_geopy_installed = False
-    #warnings.warn('\n! Missing geopy package (https://github.com/geopy/geopy) !')   
+    # logging.warning('\n! Missing geopy package (https://github.com/geopy/geopy) !')
 else:
-    # warnings.warn('\n! geopy help: http://geopy.readthedocs.io/en/latest/ !')
+    # logging.warning('\n! geopy help: http://geopy.readthedocs.io/en/latest/ !')
     _is_geopy_installed = True
     # from geopy import geocoders
-    #CODERS.update({'GoogleV3':'api_key', 'Bing':'api_key', 'GeoNames':'username', 
-    #               'Yandex':'api_key', 'MapQuest':'key', 'Nominatim':None, 
+    #CODERS.update({'GoogleV3':'api_key', 'Bing':'api_key', 'GeoNames':'username',
+    #               'Yandex':'api_key', 'MapQuest':'key', 'Nominatim':None,
     #               'OpenMapQuest':'api_key'})
-    
+
 try:
     assert _is_happy_installed is True or _is_geopy_installed is True
 except AssertionError:
-    # raise IOError('no geocoding module available')   
-    warnings.warn('\n! No geocoding module available !')   
-            
+    # raise IOError('no geocoding module available')
+    logging.warning('\n! No geocoding module available !')
+
 try:
-    import pyproj#analysis:ignore 
+    import pyproj#analysis:ignore
 except ImportError:
-    #warnings.warn('\n! missing pyproj package (https://github.com/pyproj4/pyproj) !')
+    # logging.warning('\n! missing pyproj package (https://github.com/pyproj4/pyproj) !')
     _is_pyproj_installed = False
 else:
-    # warnings.warn('\n! pyproj help: https://pyproj4.github.io/pyproj/latest/ !')
+    # logging.warning('\n! pyproj help: https://pyproj4.github.io/pyproj/latest/ !')
     _is_pyproj_installed = True
     from pyproj import CRS as crs, Transformer
 
 from pyeudatnat import COUNTRIES
-from pyeudatnat.misc import File
+from pyeudatnat.misc import FileSys
 
 __CODERS        = { }
 CODERS          = __CODERS                                                           \
                     .update({'GISCO':           None,  # osm and GISCO) are actually... Nominatim on GISCO servers
                              'osm':             None} if _is_happy_installed else {})           \
                     or __CODERS                                                             \
-                    .update({'GoogleV3':        'api_key', # since July 2018 Google requires each request to have an API key     
-                             'Bing':            'api_key', 
-                             'GeoNames':        'username', 
-                             'Yandex':          'api_key',   
-                             'MapQuest':        'key',          
+                    .update({'GoogleV3':        'api_key', # since July 2018 Google requires each request to have an API key
+                             'Bing':            'api_key',
+                             'GeoNames':        'username',
+                             'Yandex':          'api_key',
+                             'MapQuest':        'key',
                              'Nominatim':       None, # using Nominatim with the default geopy is strongly discouraged
                              'OpenMapQuest':    'api_key'} if _is_geopy_installed else {})      \
                     or __CODERS # at the end, CODERS will be equal to __CODERS after its updates
 
 # default geocoder... but this can be reset when declaring a subclass
-DEFCODER        = {'Bing' : None} # 'GISCO', 'Nominatim', 'GoogleV3', 'GMaps', 'GPlace', 'GeoNames'
+DEF_CODER       = {'Bing' : None} # 'GISCO', 'Nominatim', 'GoogleV3', 'GMaps', 'GPlace', 'GeoNames'
 
 DRIVERS         = {gdal.GetDriver(i).ShortName: gdal.GetDriver(i).LongName
                    for i in range(gdal.GetDriverCount())}
 
-DEFDRIVER       = "GeoJSON"
+DEF_DRIVER      = "GeoJSON"
 
-DEFPROJ4LL      = '+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs'
-DEFPROJ4SM      = '+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +no_defs'
+DEF_PROJ        = 'WGS84'
+DEF_PROJ4LL     = '+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs'
+DEF_PROJ4SM     = '+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +no_defs'
 
- 
+
 # LATLON        = ['lat', 'lon'] # 'coord' # 'latlon'
-# ORDER         = 'lL' # first lat, second Lon 
+# ORDER         = 'lL' # first lat, second Lon
 
-PLACE = ['street', 'number', 'postcode', 'city', 'country']
+DEF_PLACE       = ['street', 'number', 'postcode', 'city', 'country']
 """Fields used to defined a toponomy (location/place).
 """
 
@@ -155,12 +156,12 @@ PLACE = ['street', 'number', 'postcode', 'city', 'country']
 
 def isoCountry(arg):
     """Given a country name or an ISO 3166 code, return the pair {name,code}.
-    
+
         >>> country = isoCountry(country_or_cc)
-            
+
     Examples
     --------
-    
+
         >>> GeoProcess.isoCountry('CZ')
             {'code': 'CZ', 'country': 'Czechia'}
         >>> GeoProcess.isoCountry('Greece')
@@ -170,12 +171,12 @@ def isoCountry(arg):
     if not (arg is None or isinstance(arg, (string_types,Mapping))):
         raise TypeError("Wrong format for country/code '%s' - must be a string or a dictionary" % arg)
     elif isinstance(arg, string_types):
-        if arg in COUNTRIES.keys():     
+        if arg in COUNTRIES.keys():
             cc, country = arg, None
         elif arg in COUNTRIES.values():
             cc, country = None, arg
         else:
-            raise IOError("Country/code '%s' not recognised" % arg)    
+            raise IOError("Country/code '%s' not recognised" % arg)
     elif isinstance(arg, Mapping):
         if 'code' in arg or 'name' in arg:
             cc, country = arg.get('code', None), arg.get('name', None)
@@ -189,14 +190,14 @@ def isoCountry(arg):
     elif cc in ('', None): # and NOT country in ('', {}, None)
         try:
             cc = dict(map(reversed, COUNTRIES.items())).get(country)
-        except:     
+        except:
             #cc = country.split()
             #if len(cc) >1:              cc = ''.join([c[0].upper() for c in country.split()])
             #else:                       cc = country # cc[0]
             cc = None
     elif country in ('', {}, None): # and NOT cc in ('', None)
         try:
-            country = COUNTRIES.get(cc) 
+            country = COUNTRIES.get(cc)
         except:     country = None
     return {'code': cc, 'name': country}
 
@@ -204,22 +205,22 @@ def isoCountry(arg):
 #==============================================================================
 # Class Service
 #==============================================================================
-  
+
 class Service(object):
     """Instantiation class for geoprocessing module.
-    
+
         >>> geoserv = Service()
     """
-            
+
     #/************************************************************************/
     @classmethod
     def select_coder(cls, arg):
         """Define geocoder.
-        
-            >>> coder = Service.selectCoder(arg)
+
+            >>> coder = Service.select_coder(arg)
         """
         if arg is None:
-            #arg = cls.DEFCODER.copy()
+            #arg = cls.DEF_CODER.copy()
             raise IOError("No geocoder parsed")
         elif not isinstance(arg, (string_types,Mapping)):
             raise TypeError("Wrong format for geocoder '%s' - must be a string or a dictionary" % arg)
@@ -228,7 +229,7 @@ class Service(object):
         elif isinstance(arg, Mapping):
             coder, key = list(arg.items())[0]
         try:
-            assert coder in CODERS 
+            assert coder in CODERS
         except:
             raise IOError("Geocoder '%s' not available/recognised" % coder)
         try:
@@ -236,12 +237,12 @@ class Service(object):
         except:
             try:
                 assert _is_geopy_installed is True
-            except:     
+            except:
                 raise IOError("No geocoder available")
             else:
                 coder, key = 'Bing', None
         return {'coder': coder, CODERS[coder]: key}
-                        
+
     #/************************************************************************/
     def __init__(self, *args,  **kwargs):
         try:
@@ -250,41 +251,41 @@ class Service(object):
             raise ImportError("No instance of '%s' available" % self.__class__)
         if not args in ((),(None,)):
             coder = args[0]
-        else:       
-            coder = kwargs.pop('coder', DEFCODER) # None
-        self.geocoder = self.select_coder(coder) 
+        else:
+            coder = kwargs.pop('coder', DEF_CODER) # None
+        self.geocoder = self.select_coder(coder)
         coder = self.geocoder['coder']
         key = CODERS[coder]
         try:
-            assert _is_happy_installed is True 
+            assert _is_happy_installed is True
         except: # _is_geopy_installed is True and, hopefully, coder not in ('osm','GISCO')
-            if coder.lower() in ('osm','gisco'): 
+            if coder.lower() in ('osm','gisco'):
                 raise IOError('geocoder %s not available' % coder)
-            try:        
-                gc = getattr(geopy.geocoders, coder)   
-            except:     
+            try:
+                gc = getattr(geopy.geocoders, coder)
+            except:
                 raise IOError("Coder not available")
-            else:    
-                self.geoserv = gc(**{key: self.geocoder[key]})            
+            else:
+                self.geoserv = gc(**{key: self.geocoder[key]})
         else:
-            if coder.lower() == 'osm':  
+            if coder.lower() == 'osm':
                 kwargs.pop('exactly_one')
                 self.geoserv = services.OSMService()
-            elif coder.lower() == 'gisco':  
+            elif coder.lower() == 'gisco':
                 kwargs.pop('exactly_one')
                 self.geoserv = services.GISCOService()
             else:
                 kwargs.pop('exactly_one')
                 self.geoserv = services.APIService(**self.geocoder)
         self.crs, self.proj = None, None # no use
-    
+
     #/************************************************************************/
     def __getattr__(self, attr):
-        if attr in ('im_class','__objclass__'): 
+        if attr in ('im_class','__objclass__'):
             return getattr(self.geoserv, '__class__')
         elif attr.startswith('__'):  # to avoid some bug of the pylint editor
-            try:        return object.__getattribute__(self, attr) 
-            except:     pass 
+            try:        return object.__getattribute__(self, attr)
+            except:     pass
         try:        return getattr(self.geoserv, attr)
         except:     raise IOError("Attribute '%s' not available" % attr)
 
@@ -294,14 +295,14 @@ class Service(object):
         return self.__geocoder # or {}
     @geocoder.setter#analysis:ignore
     def geocoder(self, coder):
-        if not (coder is None or isinstance(coder, Mapping)):         
+        if not (coder is None or isinstance(coder, Mapping)):
             raise TypeError("Wrong format for geocoder '%s' - must be a string" % coder)
         self.__geocoder = coder
 
     #/************************************************************************/
     def locate(self, *place, **kwargs):
         """Geocoding method.
-        
+
             >>> coord = geoserv.locate(*place, **kwargs)
         """
         try:
@@ -310,10 +311,10 @@ class Service(object):
             raise ImportError("'locate' method not available")
         if 'place' in kwargs:
             place = (kwargs.pop('place', ''),)
-        kwargs.update({'order': 'lL', 'unique': True, 
+        kwargs.update({'order': 'lL', 'unique': True,
                       'exactly_one': True})
         if _is_happy_installed is True:
-            if self.geocoder['coder'] in ('osm','GISCO'): 
+            if self.geocoder['coder'] in ('osm','GISCO'):
                 kwargs.pop('exactly_one')
             else:
                 kwargs.pop('exactly_one')
@@ -323,12 +324,12 @@ class Service(object):
             order = kwargs.pop('order', 'lL')
             loc = self.geoserv.geocode(place, **kwargs) # self.geoserv._gc.geocode(place, **kwargs)
             lat, lon = loc.get('latitude'), loc.get('longitude')
-            return [lat,lon] if order == 'lL' else [lon, lat] 
-        
+            return [lat,lon] if order == 'lL' else [lon, lat]
+
     #/************************************************************************/
     def project(self, *coord, **kwargs):
-        """Projection method. 
-        
+        """Projection method.
+
             >>> ncoord = geoserv.project(coord, iproj='WGS84', oproj='WGS84')
         """
         try:
@@ -363,13 +364,13 @@ class Service(object):
 #==============================================================================
 # Class Vector
 #==============================================================================
-  
+
 class Vector(object):
     """Instantiation class for vector data.
-    
+
         >>> vector = Vector()
     """
-    
+
     #/************************************************************************/
     @staticmethod
     def open(file, src=None, **kwargs):
@@ -379,9 +380,9 @@ class Vector(object):
         note:
             Considering the use of PushErrorHandler in open, this function
             prevents from being called inside another function.
-        """       
+        """
         # gdal.ErrorReset()
-        # gdal.PushErrorHandler('QuietErrorHandler') 
+        # gdal.PushErrorHandler('QuietErrorHandler')
         # ogr.RegisterAll()
         try:
             assert file is None or isinstance(file, (bytes,io.BytesIO,io.StringIO,string_types))
@@ -417,7 +418,7 @@ class Vector(object):
             drv = ogr.GetDriverByName(driver)
             fopen = drv.Open
         if vsi is not False: # https://gdal.org/user/virtual_file_systems.html
-            vname = vsi or Sys.uuid() 
+            vname = vsi or Sys.uuid()
         if isinstance(src, (io.BytesIO,io.StringIO)):
             mmap = "/vsimem/%s" % vname
             try:
@@ -450,7 +451,7 @@ class Vector(object):
                     raise OSError("Error retrieving zipped source data")
                 else:
                     src = mmap
-            elif not File.filexists(src):
+            elif not FileSys.filexists(src):
                 raise OSError("File '%s' not found on disk" % src)
             else:
                 mmap = None # and src unchanged
@@ -474,9 +475,9 @@ class Vector(object):
             assert isinstance(ds, string_types)
         except:
             raise TypeError("Wrong type for data source - must be a string")
-        if File.filexists(ds):      
-            File.remove(ds)
-        driver = kwargs.pop('driver', DEFDRIVER)
+        if FileSys.filexists(ds):
+            FileSys.remove(ds)
+        driver = kwargs.pop('driver', DEF_DRIVER)
         try:
             assert isinstance(driver,string_types) and driver in DRIVERS
         except:
@@ -486,8 +487,8 @@ class Vector(object):
         try:
             return driver.CreateDataSource(ds)
         except:
-            raise IOError("Error creating data source '%s'" % ds)   
-    
+            raise IOError("Error creating data source '%s'" % ds)
+
     #/************************************************************************/
     @staticmethod
     def open_layer(arg, **kwargs):
@@ -496,22 +497,22 @@ class Vector(object):
         except:
             raise TypeError("Wrong type for input parameter - must be a string, a data source or a layer")
         ds, layer = None, None
-        if isinstance(arg, string_types):                    
+        if isinstance(arg, string_types):
             ds = Vector.open(arg, **kwargs)
             if isinstance(ds, Sequence):     ds = ds[0]
-        elif isinstance(arg, ogr.DataSource):                
+        elif isinstance(arg, ogr.DataSource):
             ds = arg
-        elif isinstance(arg, ogr.Layer):                     
+        elif isinstance(arg, ogr.Layer):
             return layer # dummy
         geom = kwargs.pop('geom', [])
-        if geom is None:       
+        if geom is None:
             return ds.GetLayer()
-        else:                   
-            return ds.GetLayerByName(geom)           
-    
+        else:
+            return ds.GetLayerByName(geom)
+
     #/************************************************************************/
     @staticmethod
-    def spatialref4(proj):       
+    def spatialref4(proj):
         srs = osr.SpatialReference()
         try:
             assert srs.ImportFromProj4(proj) == 0
@@ -529,12 +530,12 @@ class Vector(object):
             assert isinstance(arg, (string_types,ogr.DataSource,ogr.Layer))
         except:
             raise TypeError("Wrong type for input parameter - must be a string, a data source or a layer")
-        if isinstance(arg, string_types):                               
-            ds = Vector.new(arg, driver=kwargs.pop('driver',DEFDRIVER)) 
+        if isinstance(arg, string_types):
+            ds = Vector.new(arg, driver=kwargs.pop('driver',DEF_DRIVER))
             layer = osp.splitext(osp.basename(arg))[0] # osp.splitext(osp.split(arg)[1])[0]
-        elif isinstance(arg, ogr.DataSource):                    
+        elif isinstance(arg, ogr.DataSource):
             ds = arg
-        elif isinstance(arg,ogr.Layer):                          
+        elif isinstance(arg,ogr.Layer):
             return arg
         # read other parameters
         srs = Vector.spatialref4(kwargs.pop('proj', None))
@@ -558,10 +559,10 @@ class Vector(object):
             raise TypeError("Wrong type for input parameter - must be a string, a data source or a layer")
         # read layer
         layer = Vector.open_layer(arg)
-        srs = layer.GetSpatialRef()          
+        srs = layer.GetSpatialRef()
         # get spatialReference from the layer
         proj = srs.ExportToProj4() if srs else '' or kwargs.pop('proj','')
-        kwargs.update({'proj': proj})        
+        kwargs.update({'proj': proj})
         # load features (shapegeo and fdpacks)
         fielddefs = Vector.read_field(layer)[0]
         geoms, fields = Vector.readlayer(layer, **kwargs)
@@ -587,9 +588,9 @@ class Vector(object):
             # get the next feature
             feature = layer.GetNextFeature()
         return geoms, fields #, fielddefs
-        
+
     @staticmethod
-    def geometry_factory(iproj, oproj=DEFPROJ4LL):
+    def geometry_factory(iproj, oproj=DEF_PROJ4LL):
         """Return a function that transforms a geometry from one spatial reference
         to another.
         """
@@ -609,8 +610,8 @@ class Vector(object):
                 raise IOError("Could not transform geometry: '%s'" % g.ExportToWkt())
             if is_base: # if we originally had a shapelyGeometry, convert it back
                 g = wkb.loads(g.ExportToWkb())
-            return g 
-        ct = osr.CoordinateTransformation(Vector.spatialref4(iproj), 
+            return g
+        ct = osr.CoordinateTransformation(Vector.spatialref4(iproj),
                                           Vector.spatialref4(oproj))
         return lambda g: geotrans(g, ct)
 
@@ -636,7 +637,7 @@ class Vector(object):
             write(path, shape=None, src='', dst='', fdpacks=None, fddefs=None, drv=DEF_VECTOR)
             write(ds, shape=None, src='', dst='', fdpacks=None, fddefs=None)
             write(layer, shape=None, src='', dst='', fdpacks=None, fddefs=None)
-        """  
+        """
         try:
             assert isinstance(arg, (string_types,ogr.DataSource,ogr.Layer))
         except:
@@ -645,14 +646,14 @@ class Vector(object):
         # any operation on projections ?
         geom = kwargs.pop('geom',[])
         # retrieve the layer
-        layer = Vector.newl_ayer(arg, geom=Vector.geom2ogr(geom), 
+        layer = Vector.newl_ayer(arg, geom=Vector.geom2ogr(geom),
                                  proj=iproj or oproj)
         try:
             assert layer is not None
         except:
             raise IOError("Wrong layer")
         Vector.write_layer(layer, geom=geom, iproj=iproj, oproj=oproj)
-         
+
     #/************************************************************************/
     @staticmethod
     def geom2ogr(geom): #
@@ -662,7 +663,7 @@ class Vector(object):
             ogrgeo = geom2ogr(geom)
         """
         geotypes = list(set(type(x) for x in geom))
-        
+
         return ogr.wkbUnknown if len(geotypes) > 1 else {
             geometry.Point: ogr.wkbPoint,
             geometry.point.PointAdapter: ogr.wkbPoint,
@@ -691,8 +692,8 @@ class Vector(object):
             raise IOError("A field definition is required for each field")
         # make fddefs in featureDefinition
         [layer.CreateField(ogr.FieldDefn(fdname, fdtype))       \
-             for fdname, fdtype in fddefs]  
-        featdef = layer.GetLayerDefn()        
+             for fdname, fdtype in fddefs]
+        featdef = layer.GetLayerDefn()
         geom = kwargs.pop('geom', [])
         geotf = Vector.geometry_factory(**kwargs)
         for shape, field in itertools.izip(geom, fdpacks)       \
@@ -700,15 +701,15 @@ class Vector(object):
             featdef = layer.GetLayerDefn()  # prepare feature
             feature = ogr.Feature(featdef)
             feature.SetGeometry(geotf(ogr.CreateGeometryFromWkb(shape.wkb)))
-            [feature.SetField(fdindex, fdvalue)  for fdindex, fdvalue in enumerate(field)]          
-            layer.CreateFeature(feature)    # save feature      
+            [feature.SetField(fdindex, fdvalue)  for fdindex, fdvalue in enumerate(field)]
+            layer.CreateFeature(feature)    # save feature
             feature.Destroy()  # clean up
 
     #/************************************************************************/
     @staticmethod
     def write_field(field, **kwargs):
-        """Create a field definition, which can be used to create a field using 
-        the CreateField() function. Simply create a "model" for a field, that can 
+        """Create a field definition, which can be used to create a field using
+        the CreateField() function. Simply create a "model" for a field, that can
         then be called later.
         """
         try:
@@ -728,10 +729,10 @@ class Vector(object):
 #==============================================================================
 # Class Raster
 #==============================================================================
-  
+
 class Raster(object):
     """Instantiation class for raster data.
-    
+
         >>> raster = Raster()
     """
     pass
