@@ -32,6 +32,7 @@ level into harmonised format.
 
 import io, sys, re
 from os import path as osp
+import functools
 import pprint, logging
 
 from collections.abc import Mapping, Sequence
@@ -55,8 +56,6 @@ from pyeudatnat.geo import isoCountry, Service as GeoService
 from pyeudatnat.geo import DEF_CODER, DEF_PLACE
 
 
-_IS_META_UPDATED    = False
-
 PROCESSES           = [ 'fetch', 'load', 'prepare', 'clean', 'translate',
                         'locate', 'format', 'save' ]
 
@@ -67,27 +66,23 @@ PROCESSES           = [ 'fetch', 'load', 'prepare', 'clean', 'translate',
 # Class BaseDatNat
 #==============================================================================
 
-class BaseDatNat(object):
+class BaseDatNat():
     """Base class used to represent national data sources.
 
         >>> dat = BaseDatNat(**metadata)
     """
 
-    CATEGORY = None
-    COUNTRY = None # class attribute... that should not be different from cc
-    CC = None
-    PUBDATE = None # for future...
+    CATEGORY    = None
+    COUNTRY     = None # class attribute... that should not be different from cc
+    CC          = None
+    DATE        = None
+    PUBDATE     = None # for versioning
 
     #/************************************************************************/
     def __init__(self, *args, **kwargs):
-        # self.__config, self.__metadata = {}, {}
-        # self.__options = {}
+        # self.__config, self.__metadata, self.__options = {}, {}, {}
         self.__data, self.__buffer = None, None # data, content
         self.__columns, self.__index = {}, []
-        self.__language = None
-        self.__refdate, self.__pubdate = None, None
-        #self.__geocoder, self.__geoservice = None, None
-        self.__proj = None
         try:
             # meta should be initialised in the derived class
             assert self.__metadata not in ({},None)
@@ -95,7 +90,6 @@ class BaseDatNat(object):
             if not args in ((),(None,)):
                 self.meta = MetaDat(args[0])
             else:
-                #logging.warning("\n! No metadata parsed !")
                 self.meta = MetaDat()
         try:
             # config should be initialised in the derived class
@@ -106,28 +100,23 @@ class BaseDatNat(object):
             assert self.__options not in ({},None)
         except (AttributeError,AssertionError):
             self.options = {p:{} for p in PROCESSES} # dict.fromkeys(PROCESSES, {})
-        # try:
-        #     self.__geocoder = kwargs.pop('coder', self.geocoder)
-        # except:
-        #     pass
-        # retrieve type
+        # check the category
         self.category = kwargs.pop('category', self.config.get('category') or self.CATEGORY)
         # retrieve country name and code
-        country = isoCountry(self.meta.get('country') or self.COUNTRY)
-        self.cc = kwargs.pop('cc', None if country in ({},None) else country.get('code'))
-        # retrieve languge of the input data
-        lang = isoLang(self.meta.get('lang'))
-        self.lang = kwargs.pop('lang', None if lang in ({},None) else lang.get('code'))
-        path, file = kwargs.pop('path', self.meta.get('path') or ''), kwargs.pop('file',self.meta.get('file') or '')
-        # path = osp.abspath(path)
-        self.file = None if file in (None,'') and path in (None,'')         \
-            else (file if path in (None,'')                                 \
-            else (osp.join(path, file) if isinstance(file, string_types)    \
-            else ([osp.join(path, f) for f in file] if isinstance(file, Sequence) \
-            else path)))
+        #country = isoCountry(self.meta.get('country') or self.COUNTRY)
+        #self.cc = kwargs.pop('cc', None if country in ({},None) else country.get('code'))
+        self.cc = kwargs.pop('cc', self.meta.get('country')) or self.CC
+        # retrieve source file
+        self.file = {'path': kwargs.pop('path', self.meta.get('path') or ''),
+                     'file': kwargs.pop('file',self.meta.get('file') or '')
+            }
         self.src = kwargs.pop('src', self.meta.get('src') or None) # to avoid ''
+        # retrieve language of the input data
+        #lang = isoLang(self.meta.get('lang'))
+        #self.lang = kwargs.pop('lang', None if lang in ({},None) else lang.get('code'))
+        self.lang = kwargs.pop('lang', self.meta.get('lang'))
         # retrieve input options / parameters for the various processing operations
-        self.options.update(self.meta.get('options',{}))
+        self.options.update(self.meta.get('options', {}))
         self.options = kwargs.pop('options', self.options)
         # retrieve caching arguments
         self.cache = {'caching':kwargs.pop('caching',False),
@@ -138,9 +127,11 @@ class BaseDatNat(object):
                                'cache_force': kwargs.pop('cache_force',False)
                               })
         # retrieve reference date, if any
-        self.date = kwargs.pop('date', None)
-        # retrieve the input data projection
-        self.proj = kwargs.pop('proj', self.meta.get('proj')) # projection system
+        self.date = kwargs.pop('date', None) or self.DATE
+        self.pubdate = kwargs.pop('pubdate', None) or self.PUBDATE
+        # # retrieve the geocoder and input data projection
+        # self.proj = kwargs.pop('proj', self.meta.get('proj')) # projection system
+        # self.geocoder = kwargs.pop('gc', self.meta.get('gc')) # geocoder
         # retrieve columns when already known
         cols = kwargs.pop('cols', None)
         self.cols = cols or self.meta.get('columns') or []    # header columns
@@ -170,6 +161,13 @@ class BaseDatNat(object):
             except:     pass
         elif attr.startswith('opts_'):
             try:        return self.options.get(attr[len('opts_'):])
+            except:     pass
+        elif attr.startswith('to_'):
+            return functools.partial(getattr(Frame, attr), self.data)
+            try:        return functools.partial(getattr(Frame, attr), self.data)
+            except:     pass
+        elif attr.startswith('from_'):
+            try:        return functools.partial(getattr(Frame, attr), self.file)
             except:     pass
         else:
             pass
@@ -217,8 +215,7 @@ class BaseDatNat(object):
             raise IOError("Wrong keys for OPTIONS '%s' - must be any from the list '%s'" % (opts,PROCESSES))
         elif not all(v is None or isinstance(v,Mapping) for v in opts.values()):
             raise TypeError("Wrong format for OPTIONS '%s' values - must be dictionaries" % opts)
-        if _IS_META_UPDATED is True and opts not in ({},None):
-            self.__metadata.update({'options': opts})
+        # self.__metadata.update({'options': opts})
         self.__options = opts
 
     @property
@@ -244,103 +241,61 @@ class BaseDatNat(object):
 
     @property
     def category(self):
-        # return self.config.get('category') or self.CATEGORY
-        return self.__category # or ''
+        return self.config.get('category') or self.CATEGORY
     @category.setter
     def category(self, cat):
-        if cat is None or isinstance(cat, (string_types, Mapping)):
-            pass
-        #elif isinstance(cat, Mapping):
-        #    cat = str(list(typ.values())[0])
-        else:
+        if not (cat is None or isinstance(cat, (string_types, Mapping))):
             raise TypeError("Wrong format for CATEGORY: '%s' - must be a string (or a dictionary)" % type(cat))
         self.__config.update({'category': cat})
-        self.__category = cat
-    #@property
-    #def category(self):
-    #    return [v['name'] for (k,v) in FACILITIES.items() if k==self.cat][0]
 
     @property
     def cc(self):
-        return self.__cc
+        return self.meta.get('country',{}).get('code') or self.CC
     @cc.setter
     def cc(self, cc):
-        if cc is None:                          pass
-        elif not isinstance(cc, string_types):
-            raise TypeError("Wrong format for CC country code '%s' - must be a string" % cc)
-        elif not cc in COUNTRIES: # COUNTRIES.keys()
-            raise IOError("Wrong CC country code '%s' - must be any valid ISO code from the EU area" % cc)
-        elif cc != self.CC: # next(iter(self.COUNTRY))
-            logging.warning("\n! Mismatch with class variable 'CC': %s !" %
-                            self.CC) #next(iter(self.COUNTRY)))
-        if _IS_META_UPDATED is True and cc is not None:
-            self.__metadata.update({'country': {'code': cc, 'name': COUNTRIES[cc]}}) # isoCountry
-        self.__cc = cc
+        if not (cc is None or isinstance(cc, (string_types, Mapping))):
+            raise TypeError("Wrong format for CC: '%s' - must be a string (or a dictionary)" % type(cc))
+        self.__metadata.update({'country': None if cc is None else isoCountry(cc)})
 
     @property
     def country(self):
-        return COUNTRIES[self.cc]
-    # @property
-    # def area(self):
-    #     return self.country
-
-    # @property
-    # def geocoder(self):
-    #     return self.__geocoder
-    # @geocoder.setter
-    # def geocoder(self, coder):
-    #     if coder is None: pass # avoid raising an error
-    #     else:
-    #         self.__geocoder = GeoService.select_coder(coder)
-    #     self.__geoservice = None
-
-    # @property
-    # def geoserv(self):
-    #     if self.__geoservice is None:
-    #         if self.__geocoder is None:
-    #             raise IOError("GEOCODER needs to be defined before GEOSERVice can be set")
-    #         self.__geoservice = GeoService(self.__geocoder)
-    #     return self.__geoservice
+        return self.meta.get('country',{}).get('name') # COUNTRIES[self.cc]
+    @country.setter
+    def country(self, country):
+        if not (country is None or isinstance(cc, (string_types, Mapping))):
+            raise TypeError("Wrong format for COUNTRY: '%s' - must be a string (or a dictionary)" % type(country))
+        self.__metadata.update({'country': None if country is None else isoCountry(country)})
 
     @property
-    def lang(self):
-        return self.__language
-    @lang.setter
-    def lang(self, lang):
-        if lang is None:                          pass
-        elif not isinstance(lang, string_types):
-            raise TypeError("Wrong format for LANGuage type '%s' - must be a string" % lang)
-        elif not lang in LANGS: # LANGS.keys()
-            raise IOError("Wrong LANGuage '%s' - must be any valid ISO language code" % lang)
-        if _IS_META_UPDATED is True and lang not in (None,{}):
-            self.__metadata.update({'lang': {'code': lang, 'name': LANGS[lang]}}) # isoLang
-        self.__language = lang
+    def src(self):
+        return self.__source
+    @src.setter
+    def src(self, src):
+        if not (src is None or isinstance(src, string_types)):
+            raise TypeError("Wrong format for data SOURCE: '%s' - must be a string" % type(src))
+        self.__source = src
 
     @property
-    def pubdate(self):
-        return self.__pubdate
-    @pubdate.setter
-    def pubdate(self, date):
-        if date is None:                          pass
-        elif not isinstance(date, (int,string_types,datetime)):
-            raise TypeError("Wrong format for PUBDATE parameter '%s'" % date)
-        elif date != self.PUBDATE:
-            logging.warning("\n! Mismatch with class variable 'PUBDATE': %s !" %
-                            self.PUBDATE)
-        if _IS_META_UPDATED is True and date is not None:
-            self.__metadata.update({'pubdate': date})
-        self.__pubdate = cc
-
-    @property
-    def date(self):
-        return self.__refdate
-    @date.setter
-    def date(self, refdate):
-        if not (refdate is None or isinstance(refdate, (datetime,int))):
-            raise TypeError("Wrong format for DATE: '%s' - must be an integer or a datetime" % refdate)
-        if _IS_META_UPDATED is True and refdate is not None:
-            self.__metadata.update({'refdate': refdate})
-        self.__refdate = refdate
+    def file(self):
+        return FileSys.filepath(self.meta)
+    @file.setter
+    def file(self, file):
+        if file is None:
+            self.__metadata.update({'file': None, 'path': None})
+        elif isinstance(file, Mapping) and not isinstance(file, string_types):
+            if not set(list(file.keys())).difference(set(['file', 'path'])) == set():
+                raise IOError("Wrong keys for source dictionary FILE '%s'" % file)
+            self.__metadata.update(file)
+        elif isinstance(file, string_types)                                 \
+            or (isinstance(file, Sequence) and all([isinstance(f, string_types) for f in file])):
+            if isinstance(file, string_types):
+                file = [file,]
+            file = [osp.realpath(f) for f in file]
+            f, p = (osp.basename(file), osp.dirname(file)) if isinstance(file, string_types)    \
+                else zip(*[(osp.basename(_), osp.dirname(_)) for f in file])
+            self.__metadata.update({'file': f, 'path': p})
+        else:
+            raise TypeError("Wrong format for source FILE: '%s' - must be a (list of) string(s)" % type(file))
 
     # @property
     # def fmt(self):
@@ -352,33 +307,93 @@ class BaseDatNat(object):
     #         raise TypeError("Wrong type for data ForMaT '%s' - must be a string" % fmt)
     #     elif not fmt in Structure.uniq_list(FORMATS):
     #         raise IOError("Wrong ForMaT: '%s' currently not supported" % fmt)
-    #     if _IS_META_UPDATED is True and fmt not in (None,''):
-    #         self.__metadata.update({'fmt': fmt})
-    #     self.__format = fmt
+    #     self.__metadata.update({'fmt': fmt})
 
     @property
-    def src(self):
-        return self.__source
-    @src.setter
-    def src(self, src):
-        if not (src is None or isinstance(src, string_types)):
-            raise TypeError("Wrong format for data SOURCE '%s' - must be a string" % src)
-        self.__source = src
+    def pubdate(self):
+        return self.meta.get('pubdate') or self.PUBDATE
+    @pubdate.setter
+    def pubdate(self, date):
+        if date is None:                          pass
+        elif not isinstance(date, (int,string_types,datetime)):
+            raise TypeError("Wrong format for PUBDATE: '%s'" % type(date))
+        self.__metadata.update({'pubdate': date})
 
     @property
-    def file(self):
-        return self.__file
-    @file.setter
-    def file(self, file):
-        if not (file is None or isinstance(file, string_types) \
-                or (isinstance(file, Sequence) and all([isinstance(f, string_types) for f in file]))):
-            raise TypeError("Wrong format for source FILE '%s' - must be a (list of) string(s)" % file)
-        if _IS_META_UPDATED is True and file is not None:
-            self.__metadata.update({'file': None if file is None else osp.basename(file),
-                              'path': None if file is None else osp.dirname(file)})
-        self.__file = file
+    def date(self):
+        return self.meta.get('refdate') or self.DATE
+    @date.setter
+    def date(self, refdate):
+        if not (refdate is None or isinstance(refdate, (datetime,int))):
+            raise TypeError("Wrong format for DATE: '%s' - must be an integer or a datetime" % type(refdate))
+        self.__metadata.update({'refdate': refdate})
+    @property
+    def refdate(self):
+        return self.date
 
-    #/************************************************************************/
+    @property
+    def proj(self):
+        #return self.meta.get('proj')
+        return self.options.get('locate',{}).get('proj')
+    @proj.setter#analysis:ignore
+    def proj(self, proj):
+        if not (proj is None or isinstance(proj, string_types)):
+            raise TypeError("Wrong format for PROJection:  '%s' - must be a string" % type(proj))
+        self.__options.update({'locate': {'proj': proj}})
+
+    @property
+    def geocoder(self):
+        # return self.meta.get('gc')
+        return self.options.get('locate',{}).get('gc')
+    @geocoder.setter
+    def geocoder(self, coder):
+        if not (coder is None or isinstance(coder, (string_types, Mapping))):
+            raise TypeError("Wrong format for geoCODER: '%s' - must be a string or a dictionary" % type(coder))
+        self.__options.update({'locate': {'gc': None if coder is None else GeoService.select_coder(coder)}})
+
+    @property
+    def lang(self):
+        return self.meta.get('lang',{}).get('code')
+    @lang.setter
+    def lang(self, lang):
+        if not (lang is None or isinstance(lang, (string_types, Mapping))):
+            raise TypeError("Wrong format for LANGuage: '%s' - must be a string or a dictionary" % type(lang))
+        self.__metadata.update({'lang': None if lang is None else isoLang(lang)})
+
+    @property
+    def cols(self):
+        return self.__columns  # self.meta.get('cols')
+    @cols.setter#analysis:ignore
+    def cols(self, cols):
+        if cols is None:
+            pass # nothing yet
+        elif isinstance(cols, string_types):
+            cols = [{self.lang: cols}]
+        elif isinstance(cols, Mapping):
+            cols = [cols,]
+        elif isinstance(cols, Sequence) and all([isinstance(col, string_types) for col in cols]):
+            cols = [{self.lang: col} for col in cols]
+        elif not(isinstance(cols, Sequence) and all([isinstance(col, Mapping) for col in cols])):
+            raise TypeError("Wrong Input COLS headers type '%s' - must be a sequence of dictionaries" % cols)
+        # self.__metadata.update({'columns': cols})
+        self.__columns = cols
+
+    @property
+    def idx(self):
+        return self.__index  # self.meta.get('index')
+    @idx.setter#analysis:ignore
+    def idx(self, ind):
+        if ind is None:
+            pass # nothing yet
+        elif isinstance(ind, string_types):
+            ind = {ind: None}
+        elif isinstance(ind, Sequence):
+            ind = dict.fromkeys(ind)
+        elif not isinstance(ind, Mapping):
+            raise TypeError("Wrong Output INDEX type '%s' - must be a dictionary" % ind)
+        # self.__metadata.update({'index': ind})
+        self.__index = ind
+
     @property
     def cache(self):
         return self.__cache
@@ -400,53 +415,6 @@ class BaseDatNat(object):
         elif not(cache.get('cache_force') is None or isinstance(cache['cache_force'], bool)):
             raise TypeError("Wrong type for CACHE_FORCE flag")
         self.__cache = cache
-
-    @property
-    def proj(self):
-        return self.__proj
-    @proj.setter#analysis:ignore
-    def proj(self, proj):
-        if not (proj is None or isinstance(proj, string_types)):
-            raise TypeError("Wrong format for PROJection type '%s' - must be a string" % proj)
-        if _IS_META_UPDATED is True and proj is not None:
-            self.__metadata.update({'proj': proj})
-        self.__proj = proj
-
-    @property
-    def cols(self):
-        return self.__columns  # self.meta.get('cols')
-    @cols.setter#analysis:ignore
-    def cols(self, cols):
-        if cols is None:
-            pass # nothing yet
-        elif isinstance(cols, string_types):
-            cols = [{self.lang: cols}]
-        elif isinstance(cols, Mapping):
-            cols = [cols,]
-        elif isinstance(cols, Sequence) and all([isinstance(col, string_types) for col in cols]):
-            cols = [{self.lang: col} for col in cols]
-        elif not(isinstance(cols, Sequence) and all([isinstance(col, Mapping) for col in cols])):
-            raise TypeError("Wrong Input COLS headers type '%s' - must be a sequence of dictionaries" % cols)
-        if _IS_META_UPDATED is True and cols not in (None,[]):
-            self.__metadata.update({'columns': cols})
-        self.__columns = cols
-
-    @property
-    def idx(self):
-        return self.__index  # self.meta.get('index')
-    @idx.setter#analysis:ignore
-    def idx(self, ind):
-        if ind is None:
-            pass # nothing yet
-        elif isinstance(ind, string_types):
-            ind = {ind: None}
-        elif isinstance(ind, Sequence):
-            ind = dict.fromkeys(ind)
-        elif not isinstance(ind, Mapping):
-            raise TypeError("Wrong Output INDEX type '%s' - must be a dictionary" % ind)
-        if _IS_META_UPDATED is True and ind not in ({},None):
-            self.__metadata.update({'index': ind})
-        self.__index = ind
 
     #/************************************************************************/
     def get_options(self, name = None, opts = None, process = None):
@@ -499,9 +467,9 @@ class BaseDatNat(object):
              raise IOError("No SRC filename provided - set keyword file attribute/parameter")
         elif not(src is None or isinstance(src, string_types)):
              raise TypeError("Wrong format for SRC data - must be a string")
-        elif not(file is None or isinstance(file, string_types)     \
+        elif not(file is None or isinstance(file, Mapping)     \
                  or (isinstance(file, Sequence) and all([isinstance(f,string_types) for f in file]))):
-             raise TypeError("Wrong format for filename - must be a (list of) string(s)")
+             raise TypeError("Wrong format for FILEname")
         opts_fetch = self.get_options(opts = kwargs, process = 'fetch')
         opts_fetch.update(self.cache)
         self.buff = Buffer.from_file(file, src = src, **opts_fetch)
@@ -818,24 +786,28 @@ class BaseDatNat(object):
         if latlon in ([],None):
             lat, lon = self.idx.get('lat', 'lat'), self.idx.get('lon', 'lon')
             order = 'lL'
-        # lang = kwargs.pop('lang', self.lang)
         oindex = self.config.get('index',{})
         oopts = self.config.get('options',{})
         oproj = kwargs.pop('proj', oopts.get('proj'))
         oplace = oopts.get('place') or 'place'
         opts_locate = self.get_options(opts = kwargs, process = 'locate')
+        # setting geocoding service (may be of no use)
         try:
-            geocoder = opts_locate.get('coder', DEF_CODER)
+            geocoder = opts_locate.get('gc', DEF_CODER)
             geoserv = GeoService(geocoder)
         except:
             pass
+        else:
+            self.geocoder = geocoder # update
+        # defining names of geographical coordinates
         try:
             olat, olon = oindex['lat']['name'], oindex['lon']['name']
             otlat, otlon = oindex['lat']['type'], oindex['lon']['type']
         except:
             olat, olon = 'lat', 'lon'
             otlat, otlon = None, None
-        if lat == lon and lat in self.data.columns: #self.columns[lang]
+        # generating geographical coordinates
+        if lat == lon and lat in self.data.columns:
             latlon = lat
             if order == 'lL':
                 lat, lon = olat, olon
@@ -845,22 +817,18 @@ class BaseDatNat(object):
             self.data[[lat, lon]] = self.data[latlon].str.split(pat=r'\s+', n=1, expand=True) #.astype(float)
             geo_qual = 1
         elif lat in self.data.columns and lon in self.data.columns:
-        # elif lat in self.columns[lang] and lon in self.columns[lang]:
             if lat != olat:
                 self.data.rename(columns={lat: olat}, inplace=True)
             if lon != olon:
                 self.data.rename(columns={lon: olon}, inplace=True)
             geo_qual = 1
         else:
-            try:
-                assert oplace in self.data.columns
-            except:
+            if not oplace in self.data.columns:
                 mplace = self._match_cols(place, force = True)
-                place = [p for p in  [mplace[_] for _ in place]
-                         if p in self.data.columns]
+                place = [p for p in  [mplace[_] for _ in place] if p in self.data.columns]
                 # place = list(set(list(place.values())).intersecmtion(self.data.columns))
-                try:    assert place != []
-                except: raise IOError("No PLACE column(s) to be used for geolocation found in dataset")
+                if place == []:
+                    raise IOError("No PLACE column(s) to be used for geolocation found in dataset")
                 self.data[oplace] = (
                     self.data[place]
                     .astype(str)
@@ -871,49 +839,53 @@ class BaseDatNat(object):
             except:
                 self.idx.update({'place': oplace})
             f = lambda place : geoserv.locate(place)
-            try:                        f(-1)
-            except ImportError:
-                raise IOError("No geocoder available")
+            try:                    f(-1)
+            except ImportError:     raise IOError("No geocoder available")
             except:
                 self.data[olat], self.data[olon] = \
                     zip(*self.data[oplace].apply(f))
                 self.proj = None
             geo_qual = None # TBD
         try:
+            assert ('lat' in self.idx.keys() and 'lon' in self.idx.keys())  \
+                and ('lat' in oindex.keys() and 'lon' in oindex.keys())
+        except:
+            self.idx.update({'lat': olat, 'lon': olon})
+        # handling geocoding quality
+        if geo_qual:
             oqual = oindex.get('geo_qual',{}).get('name') or 'geo_qual'
             self.data[oqual] = geo_qual
-        except:
-            pass
         else:
-            try:
-                assert 'geo_qual' in self.idx.keys() and 'geo_qual' in oindex.keys()
-            except:
-                self.idx.update({'geo_qual': oqual})
+            oqual = None
+        try:
+            assert 'geo_qual' in self.idx.keys() and 'geo_qual' in oindex.keys()
+        except:
+            self.idx.update({'geo_qual': oqual})
         # update
         # no need: self.columns.extend([{'en': ind}])
         # no need: self.columns.extend([{'en': olat}, {'en': olon}}])
-        if oproj is not None and self.proj not in (None,'') and self.proj != oproj:
+        try:
+            iproj = opts_locate.get('proj', DEF_PROJ4LL)
+            assert iproj is not None
+        except:
+            pass
+        else:
+            self.proj = iproj # update
+        if oproj is not None and iproj not in (None,'') and iproj != oproj:
             f = lambda l, L :                                               \
-                geoserv.project([l, L], iproj = self.proj, oproj = oproj, **opts_locate)
-            try:                        f('-1')
-            except TypeError:
+                geoserv.project([l, L], iproj = iproj, oproj = oproj, **opts_locate)
+            try:                    f('-1')
+            except ImportError:     raise IOError("No projection transformer available")
+            except:
                 self.data[olat], self.data[olon] = zip(*self.data[[olat, olon]].apply(f))
-            except ImportError:
-                raise IOError("No projection transformer available")
         # cast
         # self.data[olat], self.data[olon] = pd.to_numeric(self.data[olat]), pd.to_numeric(self.data[olon])
         try:
             self.data[olat], self.data[olon] =                              \
-                self.data[olat].astype(Type.name2pyt(otlat)),                \
+                self.data[olat].astype(Type.name2pyt(otlat)),               \
                 self.data[olon].astype(Type.name2pyt(otlon))
         except:
             pass
-        else:
-            try:
-                assert ('lat' in self.idx.keys() and 'lon' in self.idx.keys())  \
-                    and ('lat' in oindex.keys() and 'lon' in oindex.keys())
-            except:
-                self.idx.update({'lat': olat, 'lon': olon})
 
     #/************************************************************************/
     def format_data(self, *index, **kwargs):
@@ -963,7 +935,7 @@ class BaseDatNat(object):
                 or col in self.data.columns:
                 continue
             attr = getattr(self, _col, None) # np.nan
-            if attr in ('', None, 'UNK', 'NaN', np.nan):
+            if attr in ('', ' ', [], (), None, 'UNK', 'NaN', np.nan):
                 continue
             self.data[col] = attr
             columns.update({_col: col})
@@ -1184,37 +1156,28 @@ class BaseDatNat(object):
     def get_meta(self, keys = None, **kwargs):
         force = kwargs.pop('force', False)
         meta = self.meta.to_dict() # self.meta.__dict__
-        if keys is True:
+        mkeys = list(meta.keys())
+        if keys in (None,True):
+            keys = mkeys
+        elif keys is False:
             keys = MetaDatNat.PROPERTIES
-        elif keys is None:
-            try:
-                keys = meta.PROPERTIES
-            except:
-                keys = meta.keys()
-            # keys = list(set(keys)).intersection(set(MetaDatNat.PROPERTIES))
-        for attr in keys:
-            if attr in ['index', 'columns']:
-                if force is False:
-                    continue
-                meta.update({attr:
-                             deepcopy(getattr(self, {'index': 'idx', 'columns': 'cols'}[attr]))
-                             })
-            elif attr == 'country':
-                meta.update({'country': isoCountry(self.cc)})
-            elif attr == 'lang':
-                meta.update({'lang': isoLang(self.lang)})
-            else:
+        keys = list(set(keys).intersection(set(mkeys)))
+        if force is True:
+            key2attr = {'index': 'idx', 'columns': 'cols', 'options': 'options'}
+            for attr in key2attr.keys():
                 try:
-                    meta.update({attr: getattr(self,attr)})
+                    meta.update({attr:
+                                 deepcopy(getattr(self,key2attr[attr]))
+                                 })
                 except:         pass
-        # meta.update({'options': self.options})
+        [meta.pop(k) for k in mkeys if k not in keys]
         return meta
 
     #/************************************************************************/
     def update_meta(self):
         """Update the metadata file.
         """
-        self.meta.update(self.get_meta(keys = MetaDatNat.PROPERTIES, force = True))
+        self.meta.update(self.get_meta(keys = True, force = True))
 
     #/************************************************************************/
     def _dump_meta(self, **kwargs):
@@ -1222,10 +1185,8 @@ class BaseDatNat(object):
 
             >>> meta = fac._dump_data()
         """# basically... nothing much more than self.meta.to_dict()
-        if _IS_META_UPDATED is False:
-            meta = self.get_meta(**kwargs)
-        else:
-            meta = self.meta.to_dict()
+        meta = self.get_meta(**kwargs)
+        # meta = self.meta.to_dict()
         if kwargs.pop('as_str', False) is False:
             return meta
         kwargs.update({'ensure_ascii': kwargs.pop('ensure_ascii', False)})
@@ -1259,10 +1220,7 @@ class BaseDatNat(object):
                 dest = osp.join(PACKPATH, '%s.json' % self.cc)
             logging.warning("\n! Metadata file '%s.%s' will be created" %
                             (FileSys.basename(dest),fmt))
-        if _IS_META_UPDATED is False:
-            meta = self.get_meta(**kwargs)
-        else:
-            meta = self.meta.to_dict()
+        meta = self.get_meta(**kwargs)
         kwargs.update({'ensure_ascii': kwargs.pop('ensure_ascii', False)})
         # kwargs = Object.inspect_kwargs(kwargs, Json.dump)
         with open(dest, 'w', encoding='utf-8') as f:
@@ -1364,14 +1322,6 @@ def datnatFactory(*args, **kwargs):
     else:
         attributes.update({'CC': country.get('code'),
                            'COUNTRY': country.get('name')})
-    ## check language
-    #lang = kwargs.pop('lang', None)
-    #if lang not in (None,'',{):
-    #    lang = TextProcess.isoLang(lang)
-    #    lang = lang.get('code')
-    #    attributes.update({'LANG': lang})
-    #else:
-    #   lang = ''
     # check pubdate version
     try:
         pubdate = meta.get('pubdate') if meta is not None and 'pubdate' in meta else kwargs.pop('pubdate', None)
@@ -1380,23 +1330,6 @@ def datnatFactory(*args, **kwargs):
         raise IOError("Version type '%s' not recognised - must be an integer or a date" % type(version))
     else:
         attributes.update({'PUBDATE': pubdate})
-    # # check geocoder
-    # coder = kwargs.pop('coder', None)
-    # try:
-    #     assert coder is None or isinstance(coder,(string_types,Mapping))
-    # except AssertionError:
-    #     raise TypeError("Coder type '%s' not recognised - must be a string or a dictionary" % type(coder))
-    # #else:
-    # #    attributes.update({'CODER': coder})
-    # if not coder in ({}, ''): # None accepted as default geocoder!
-    #     try:
-    #         geocoder = DEF_CODER
-    #     except ImportError:
-    #         logging.warning("\n! No geocoder available !")
-    #         geocoder = None
-    #     except:     raise IOError("Geocoder '%s' not recognised " % coder)
-    # else:
-    #     geocoder = None
     # redefine the initialisation method
     def __init__(self, *args, **kwargs):
         # one configuration dictionary defined 'per facility'
