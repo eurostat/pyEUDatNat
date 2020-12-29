@@ -134,11 +134,11 @@ class BaseDatNat():
         # self.geocoder = kwargs.pop('gc', self.meta.get('gc')) # geocoder
         # retrieve columns when already known
         cols = kwargs.pop('cols', None)
-        self.cols = cols or self.meta.get('columns') or []    # header columns
+        self.cols = cols or deepcopy(self.meta.get('columns')) or []    # header columns
         [col.update({self.lang: col.get(self.lang) or ''}) for col in self.cols] # ensure there are 'locale' column names
         # retrieve matching columns when known
         index = kwargs.pop('index', None)   # index
-        self.idx = index or self.meta.get('index') or {}
+        self.idx = index or deepcopy(self.meta.get('index')) or {}
 
     ##/************************************************************************/
     #def __repr__(self):
@@ -491,7 +491,6 @@ class BaseDatNat():
             except:
                 self.data = Frame.from_data(self.buff, **opts_load)
                 self.buff = None
-            return
         else:
             src = (src not in ((None,),()) and src[0])                          \
                 or kwargs.pop('src', None) or self.src
@@ -697,9 +696,9 @@ class BaseDatNat():
         # lang = kwargs.pop('lang', None) # OLANG
         # refine the set of columns to actually drop
         if keep_cols != []:
-            columns = (set(self._list_cols(columns))
+            columns = (set(columns) # set(self._list_cols(columns))
                             .difference(
-                                set(self._list_cols(keep_cols))
+                                set(self._list_cols(keep_cols, force=True)) # or not? better be on the safe side
                                 )
                             )
         # drop the columns
@@ -835,8 +834,10 @@ class BaseDatNat():
                     .apply(lambda s: TextProcess.join(s, delim = ', '), axis=1)
                     )
             try:
-                assert 'place' in self.idx.keys() and 'place' in oindex.keys()
-            except:
+                assert 'place' in oindex.keys()                             \
+                    and 'place' in self.idx and self.idx['place'] != None
+            except:     pass
+            else:
                 self.idx.update({'place': oplace})
             f = lambda place : geoserv.locate(place)
             try:                    f(-1)
@@ -847,9 +848,11 @@ class BaseDatNat():
                 self.proj = None
             geo_qual = None # TBD
         try:
-            assert ('lat' in self.idx.keys() and 'lon' in self.idx.keys())  \
-                and ('lat' in oindex.keys() and 'lon' in oindex.keys())
-        except:
+            assert ('lat' in oindex.keys() and 'lon' in oindex.keys())      \
+                and ('lat' in self.idx and 'lon' in self.idx)               \
+                and (self.idx.get('lat') is not None and self.idx.get('lon') is not None)
+        except:     pass
+        else:
             self.idx.update({'lat': olat, 'lon': olon})
         # handling geocoding quality
         if geo_qual:
@@ -858,8 +861,10 @@ class BaseDatNat():
         else:
             oqual = None
         try:
-            assert 'geo_qual' in self.idx.keys() and 'geo_qual' in oindex.keys()
-        except:
+            assert 'geo_qual' in oindex.keys()                          \
+                and 'geo_qual' in self.idx and self.idx['geo_qual'] != None
+        except:     pass
+        else:
             self.idx.update({'geo_qual': oqual})
         # update
         # no need: self.columns.extend([{'en': ind}])
@@ -905,14 +910,12 @@ class BaseDatNat():
         force_cols = kwargs.pop('force', False)
         if not isinstance(force_cols, bool):
            raise TypeError("Wrong input format for FORCE parameter - must be a bool")
-        keep_cols = kwargs.pop('keep', None)
-        if keep_cols is None:
+        keep_cols = kwargs.pop('keep', True)
+        if keep_cols is None or isinstance(keep_cols, bool):
             pass
         elif isinstance(keep_cols, string_types):
             keep_cols = [keep_cols,]
-        elif isinstance(keep_cols, bool):
-            if keep_cols is False: keep_cols = []
-        elif (isinstance(keep_cols, Sequence)                              \
+        elif not (isinstance(keep_cols, Sequence)                           \
               and all([isinstance(col,string_types) for col in keep_cols])):
             raise TypeError("Wrong input format for KEEP columns - must be a (list of) string(s)")
         idtfmt = kwargs.pop('dtfmt', None)
@@ -953,10 +956,9 @@ class BaseDatNat():
             return
         #columns = {k:oindex[v].get('name', v) if v in oindex.keys() else v
         #                for (k,v) in columns.items()}
-        indexes = list(self.idx.keys())
-        inicols = list(self.data.columns)
+        inicols = list(self.data.columns) # fixed while data.columns may change
         col2ind = {}
-        for ind in indexes:
+        for ind in list(self.idx.keys()):
             try:
                 col = oindex[ind].get('name')
                 assert col is not None and col in inicols
@@ -965,7 +967,7 @@ class BaseDatNat():
                     col = columns.get(ind)
                     assert col is not None and col in inicols
                 except:
-                    logging.warning("No matching column found for '%s' attribute" % ind)
+                    #logging.warning("No matching column found for '%s' attribute" % ind)
                     continue
             col = col2ind.get(col, col)
             try: #if ind in oindex.keys():
@@ -1001,29 +1003,39 @@ class BaseDatNat():
                 self.idx.update({ind: col})
         # clean the data so that it matches the template; keep even those fields
         # from index which have no corresponding column
-        # options:
-        if keep_cols is None:
+        if keep_cols is False:
             keep_cols = list(columns.keys())
         elif keep_cols is True:
             #keepcols = [oindex[k]['name'] for (k,v) in self.idx.items()    \
             #            if k in oindex.keys() and v is not None]
-            #keepcols = list(self.idx.keys())
             keep_cols = [val['name'] for val in oindex.values()]
+        elif keep_cols is None:
+            #keepcols = [col for col in self.idx.values() if col is not None]
+            keep_cols = list(columns.values())
         if keep_cols == []:
             logging.warning("No columns set for the output - instead, all columns are saved")
         else:
             self._clean_cols(list(self.data.columns), keep = keep_cols)
-        if force_cols is False:
-            return
-        # 'keep' the others, i.e. when they dont exist create with NaN
-        for ind in keep_cols:
-            if ind in self.data.columns:
-                continue
-            cast = Type.name2pyt(oindex[ind]['type']) if ind in oindex.keys() else object
-            if cast == datetime:    cast = str
-            try:
-                self.data[ind] = pd.Series(dtype=cast)
-            except:     pass
+        if force_cols is True:
+            # 'keep' the others, i.e. when they dont exist create with NaN
+            for ind in keep_cols:
+                if ind in self.data.columns:
+                    continue
+                cast = Type.name2pyt(oindex[ind]['type']) if ind in oindex.keys() else object
+                if cast == datetime:    cast = str
+                try:
+                    self.data[ind] = pd.Series(dtype=cast)
+                except:     pass
+        # reorder columns
+        try:
+            ordidx = [col for col in [self.config['index'][k].get('name')       \
+                      for k in self.config['index'].keys()] if col in self.data.columns]
+            assert ordidx != []
+            ordcol = (ordidx + [col for col in self.data.columns if col not in ordidx])
+            assert ordidx != []
+            self.data = self.data.reindex(columns = ordcol)
+        except:
+            pass
 
     #/************************************************************************/
     def _dump_data(self, **kwargs):
@@ -1345,12 +1357,6 @@ def datnatFactory(*args, **kwargs):
             # ibid: creating a "copy" actually creates another MetaFacility instance
         except:
             pass
-        # # the geocoder is defined 'per country', i.e. you may use different geocoders
-        # # for different countries since the quality (e.g., OSM) may differ
-        # try:
-        #     self.geocoder = geocoder
-        # except:
-        #     pass
         #for key, value in kwargs.items():
         #    # here, the argnames variable is the one passed to the
         #    # ClassFactory call
