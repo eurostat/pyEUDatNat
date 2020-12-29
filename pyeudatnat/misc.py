@@ -1556,6 +1556,24 @@ class FileSys(object):
 
     #/************************************************************************/
     @staticmethod
+    def filepath(file, path = None):
+        if isinstance(file, Mapping) and not isinstance(file, string_types):
+            if not set(['file', 'path']).difference(set(list(file.keys()))) == set():
+                raise IOError("Wrong keys for source dictionary FILE '%s'" % file)
+            file, path = file.get('file'), file.get('path') or path
+        if not (file is None or isinstance(file, string_types)              \
+            or (isinstance(file, Sequence) and all([isinstance(f, string_types) for f in file]))):
+            raise TypeError("Wrong format for input FILE '%s'" % file)
+        elif not (path is None or isinstance(path, string_types)):
+            raise TypeError("Wrong format for input PATH '%s'" % path)
+        return None if file in (None,'') and path in (None,'')                                          \
+            else (osp.realpath(file) if path in (None,'')                                               \
+                  else (osp.realpath(path) if file in (None,'')                                         \
+                        else (osp.realpath(osp.join(path, file)) if isinstance(file, string_types)      \
+                              else [osp.realpath(osp.join(path, f)) for f in file])))
+
+    #/************************************************************************/
+    @staticmethod
     def find_file(directory, pattern):
         """Find files in a directory and all subdirectories that match a given pattern.
 
