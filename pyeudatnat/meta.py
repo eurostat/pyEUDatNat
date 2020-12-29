@@ -141,7 +141,7 @@ class MetaDat(dict):
                 meta = Json.load(fp, **kwargs)
             except:
                 raise IOError("Error saving metadata file")
-        if 'category' not in meta.keys() and self.category not in (self.CATEGORY,None):
+        if 'category' not in meta.keys()  and self.category != self.CATEGORY:
             meta.update({'category': self.category})
         return meta
 
@@ -197,7 +197,8 @@ class MetaDat(dict):
         try:
             assert osp.exists(dest)
         except AssertionError:
-            logging.warning('\n! Destination metadata file will be created !')
+            # logging.warning('\n! Destination metadata file will be created !')
+            pass
         else:
             logging.warning('\n! Destination metadata file will be overwritten !')
         meta = {k:v for (k,v) in dict(self.copy()).items() if k in self.keys()}
