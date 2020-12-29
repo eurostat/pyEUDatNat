@@ -162,9 +162,9 @@ def isoCountry(arg):
     Examples
     --------
 
-        >>> GeoProcess.isoCountry('CZ')
+        >>> geo.isoCountry('CZ')
             {'code': 'CZ', 'country': 'Czechia'}
-        >>> GeoProcess.isoCountry('Greece')
+        >>> geo.isoCountry('Greece')
             {'code': 'EL', 'country': 'Greece'}
     """
     country, cc = None, None
@@ -336,7 +336,7 @@ class Service(object):
         kwargs.pop('unique', None) # just drop the key
         order = kwargs.pop('order', 'lL')
         try:
-            loc = self.client.geocode(place, **kwargs) # self.geoserv._gc.geocode(place, **kwargs)
+            loc = self.client.geocode(place, **kwargs) # self.client._gc.geocode(place, **kwargs)
             lat, lon = loc.latitude, loc.longitude
         except:
             lat = lon = np.nan
