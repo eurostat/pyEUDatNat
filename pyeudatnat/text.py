@@ -120,7 +120,7 @@ DEF_LANG        = 'en'
 def isoLang(arg):
     """Given a language or an ISO 639 locale code, return the pair {language,locale}.
 
-        >>> text.isoLang(locale_or_language)
+        >>> Text.isoLang(locale_or_language)
     """
     if not (arg is None or isinstance(arg, (string_types,Mapping))):
         raise TypeError("Wrong format for language/locale '%s' - must be a string or a dictionary" % arg)
