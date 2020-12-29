@@ -644,14 +644,14 @@ class Frame(object):
         """JSON output formatting.
         """
         try:
-            assert columns is None or isinstance(columns, string_types)     or \
-                (isinstance(columns, Sequence) and all([isinstance(c,string_types) for c in columns]))
-        except:     raise TypeError("Wrong format for input columns")
+            assert columns is None or isinstance(columns, string_types)     \
+                or (isinstance(columns, Sequence) and all([isinstance(c,string_types) for c in columns]))
+        except:     raise TypeError("Wrong format for input COLUMNS")
         if isinstance(columns, string_types):
             columns == [columns,]
         if columns in (None,[]):
             columns = df.columns
-        columns = list(set(columns).intersection(df.columns))
+        columns = list(set(columns).intersection(list(set(df.columns))))
         df.reindex(columns = columns)
         return df[columns].to_dict('records')
 
@@ -661,9 +661,13 @@ class Frame(object):
         """GEOJSON output formatting.
         """
         try:
-            assert columns is None                                          \
+            assert columns is None or isinstance(columns, string_types)     \
                 or (isinstance(columns, Sequence) and all([isinstance(c,string_types) for c in columns]))
         except:     raise TypeError("Wrong format for input COLUMNS")
+        if isinstance(columns, string_types):
+            columns == [columns,]
+        if columns in (None,[]):
+            columns = df.columns
         try:
             assert latlon is None or isinstance(latlon,string_types)        \
                 or (isinstance(latlon, Sequence) and all([isinstance(l,string_types) for l in latlon]))
@@ -679,15 +683,16 @@ class Frame(object):
                     lat, lon = 'latitude', 'latitude'
             else:
                 lat, lon = 'lat', 'lon'
+        elif isinstance(latlon,string_types):
+            try:
+                lat = lon = latlon
+                assert lat in df.columns
+            except:     raise IOError("LATLON columns '%s' not found in the input dataset" % list(latlon))
         else:
             try:
                 lat, lon = latlon
                 assert lat in df.columns and lon in df.columns
             except:     raise IOError("LATLON columns '%s' not found in the input dataset" % list(latlon))
-        if isinstance(columns, string_types):
-            columns == [columns,]
-        if columns in (None,[]):
-            columns = list(set(df.columns))
         columns = list(set(columns)
                        .intersection(set(df.columns))
                        .difference(set([lat,lon]))
@@ -713,6 +718,55 @@ class Frame(object):
                     feature['properties'][col] = row[col]
                 geom['features'].append(feature)
         return geom
+
+    #/************************************************************************/
+    @staticmethod
+    def to_geodf(df, columns = None, latlon = None, **kwargs):
+        try:
+            assert _is_geopandas_installed is True
+        except:     raise IOError("Method not available")
+        try:
+            assert columns is None                                          \
+                or (isinstance(columns, Sequence) and all([isinstance(c,string_types) for c in columns]))
+        except:     raise TypeError("Wrong format for input COLUMNS")
+        if isinstance(columns, string_types):
+            columns == [columns,]
+        if columns in (None,[]):
+            columns = df.columns
+        try:
+            assert latlon is None or isinstance(latlon,string_types)        \
+                or (isinstance(latlon, Sequence) and all([isinstance(l,string_types) for l in latlon]))
+        except:     raise TypeError("Wrong format for input LATLON columns")
+        if latlon is None:
+            try:
+                assert 'lat' in df.columns and 'lon' in df.columns
+            except:
+                try:
+                    assert 'latitude' in df.columns and 'longitude' in df.columns
+                except:     raise IOError("No LATLON columns parsed as latitude/longitude coordinates")
+                else:
+                    lat, lon = 'latitude', 'latitude'
+            else:
+                lat, lon = 'lat', 'lon'
+        elif isinstance(latlon,string_types):
+            try:
+                lat = lon = latlon
+                assert lat in df.columns
+            except:     raise IOError("LATLON columns '%s' not found in the input dataset" % list(latlon))
+        else:
+            try:
+                lat, lon = latlon
+                assert lat in df.columns and lon in df.columns
+            except:     raise IOError("LATLON columns '%s' not found in the input dataset" % list(latlon))
+        columns = list(set(columns)
+                       .union(set([lat,lon]))
+                       .intersection(set(df.columns))
+                       )
+        return gpd.GeoDataFrame(
+            df[columns],
+            geometry = gpd.points_from_xy(df[lon], df[lat]),
+            **kwargs
+            )
 
     #/************************************************************************/
     @staticmethod
@@ -746,11 +800,12 @@ class Frame(object):
             with open(d, 'w', encoding = enc) as f:
                 Json.dump(res, f) #ensure_ascii=False)
         def _to_geojson(df, d, **kw):
-            if isinstance(df, gpd.GeoSeries):
-                nkw = Object.inspect_kwargs(kw, gpd.GeoSeries.to_file)
-                df.to_file(d, driver='GeoJSON', **nkw)
-            elif isinstance(df, gpd.GeoDataFrame):
-                nkw = Object.inspect_kwargs(kw, gpd.GeoDataFrame.to_file)
+            if _is_geopandas_installed is True:
+                if isinstance(df, gpd.GeoSeries):
+                    nkw = Object.inspect_kwargs(kw, gpd.GeoSeries.to_file)
+                    df.to_file(d, driver='GeoJSON', **nkw)
+                elif isinstance(df, gpd.GeoDataFrame):
+                    nkw = Object.inspect_kwargs(kw, gpd.GeoDataFrame.to_file)
                 df.to_file(d, driver='GeoJSON', **nkw)
             else:
                 nkw = Object.inspect_kwargs(kw, Frame.to_geojson)
