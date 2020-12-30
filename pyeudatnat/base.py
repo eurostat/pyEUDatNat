@@ -103,8 +103,6 @@ class BaseDatNat():
         # check the category
         self.category = kwargs.pop('category', self.config.get('category') or self.CATEGORY)
         # retrieve country name and code
-        #country = isoCountry(self.meta.get('country') or self.COUNTRY)
-        #self.cc = kwargs.pop('cc', None if country in ({},None) else country.get('code'))
         self.cc = kwargs.pop('cc', self.meta.get('country')) or self.CC
         # retrieve source file
         self.file = {'path': kwargs.pop('path', self.meta.get('path') or ''),
@@ -112,8 +110,6 @@ class BaseDatNat():
             }
         self.src = kwargs.pop('src', self.meta.get('src') or None) # to avoid ''
         # retrieve language of the input data
-        #lang = isoLang(self.meta.get('lang'))
-        #self.lang = kwargs.pop('lang', None if lang in ({},None) else lang.get('code'))
         self.lang = kwargs.pop('lang', self.meta.get('lang'))
         # retrieve input options / parameters for the various processing operations
         self.options.update(self.meta.get('options', {}))
@@ -129,9 +125,9 @@ class BaseDatNat():
         # retrieve reference date, if any
         self.date = kwargs.pop('date', None) or self.DATE
         self.pubdate = kwargs.pop('pubdate', None) or self.PUBDATE
-        # # retrieve the geocoder and input data projection
-        # self.proj = kwargs.pop('proj', self.meta.get('proj')) # projection system
-        # self.geocoder = kwargs.pop('gc', self.meta.get('gc')) # geocoder
+        # why not: retrieve the geocoder and input data projection
+        self.proj = kwargs.pop('proj', self.meta.get('proj')) # projection system
+        self.geocoder = kwargs.pop('gc', self.meta.get('gc')) # geocoder
         # retrieve columns when already known
         cols = kwargs.pop('cols', None)
         self.cols = cols or deepcopy(self.meta.get('columns')) or []    # header columns
@@ -349,7 +345,7 @@ class BaseDatNat():
     def geocoder(self, coder):
         if not (coder is None or isinstance(coder, (string_types, Mapping))):
             raise TypeError("Wrong format for geoCODER: '%s' - must be a string or a dictionary" % type(coder))
-        self.__options.update({'locate': {'gc': None if coder is None else GeoService.select_coder(coder)}})
+        self.__options.update({'locate': {'gc': None if coder is None else GeoService.get_client(coder)}})
 
     @property
     def lang(self):
@@ -839,7 +835,8 @@ class BaseDatNat():
             except:     pass
             else:
                 self.idx.update({'place': oplace})
-            f = lambda place : geoserv.locate(place)
+            f = lambda place : geoserv.locate_quick(place)
+            # f = lambda place : geoserv.locate(place)
             try:                    f(-1)
             except ImportError:     raise IOError("No geocoder available")
             except:
@@ -877,8 +874,9 @@ class BaseDatNat():
         else:
             self.proj = iproj # update
         if oproj is not None and iproj not in (None,'') and iproj != oproj:
-            f = lambda l, L :                                               \
-                geoserv.project([l, L], iproj = iproj, oproj = oproj, **opts_locate)
+            f = lambda l, L : geoserv.project_quick([l, L], iproj, oproj)
+            # f = lambda l, L :                                               \
+            #     geoserv.project([l, L], iproj = iproj, oproj = oproj, **opts_locate)
             try:                    f('-1')
             except ImportError:     raise IOError("No projection transformer available")
             except:
@@ -1247,7 +1245,7 @@ class BaseDatNat():
 
 def datnatFactory(*args, **kwargs):
     """Generic function to derive a class from the base class :class:`BaseFacility`
-    depending on specific metadata and a given geocoder.
+    depending on specific metadata.
 
         >>>  NewNatDat = datnatFactory(config = None, meta = None,
                                        country = None, coder = None)
