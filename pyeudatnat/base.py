@@ -335,7 +335,9 @@ class BaseDatNat():
     def proj(self, proj):
         if not (proj is None or isinstance(proj, string_types)):
             raise TypeError("Wrong format for PROJection:  '%s' - must be a string" % type(proj))
-        if 'locate' in self.__options.keys():
+        if proj is None and self.options.get('locate',{}).get('proj') is None:
+            return # do nothing
+        if 'locate' in self.options.keys():
             self.__options['locate'].update({'proj': proj})
         else:
             self.__options.update({'locate': {'proj': proj}})
@@ -349,7 +351,9 @@ class BaseDatNat():
         if not (coder is None or isinstance(coder, (string_types, Mapping))):
             raise TypeError("Wrong format for geoCODER: '%s' - must be a string or a dictionary" % type(coder))
         gc = None if coder is None else GeoService.get_client(coder)
-        if 'locate' in self.__options.keys():
+        if gc is None and self.options.get('locate',{}).get('gc') is None:
+            return # do nothing
+        if 'locate' in self.options.keys():
             self.__options['locate'].update({'gc': gc})
         else:
             self.__options.update({'locate': {'gc': gc}})
