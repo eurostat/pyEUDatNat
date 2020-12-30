@@ -802,7 +802,7 @@ class BaseDatNat():
             geocoder = opts_locate.get('gc', DEF_CODER)
             geoserv = GeoService(geocoder)
         except:
-            pass
+            geoserv = None
         else:
             self.geocoder = geocoder # update
         # defining names of geographical coordinates
@@ -846,8 +846,8 @@ class BaseDatNat():
             except:     pass
             else:
                 self.idx.update({'place': oplace})
-            f = lambda place : geoserv.locate_quick(place)
-            # f = lambda place : geoserv.locate(place)
+            f = lambda place : geoserv.locate_apply(place)
+             # f = lambda place : geoserv.locate(place)
             try:                    f(-1)
             except ImportError:     raise IOError("No geocoder available")
             except:
@@ -885,10 +885,10 @@ class BaseDatNat():
         else:
             self.proj = iproj # update
         if oproj is not None and iproj not in (None,'') and iproj != oproj:
-            f = lambda l, L : geoserv.project_quick([l, L], iproj, oproj)
+            f = lambda l, L : geoserv.project_apply([l, L], iproj, oproj)
             # f = lambda l, L :                                               \
             #     geoserv.project([l, L], iproj = iproj, oproj = oproj, **opts_locate)
-            try:                    f('-1')
+            try:                    f(-1)
             except ImportError:     raise IOError("No projection transformer available")
             except:
                 self.data[olat], self.data[olon] = zip(*self.data[[olat, olon]].apply(f))
