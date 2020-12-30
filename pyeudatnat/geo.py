@@ -412,7 +412,8 @@ class Service(object):
         return [lat,lon] if order == 'lL' else [lon, lat]
 
     #/************************************************************************/
-    def locate_quick(self, place):
+    def locate_apply(self, place):
+        assert isinstance(place, string_types)
         try:
             loc = self.geoclient.geocode(place)
             return loc.latitude, loc.longitude
@@ -455,7 +456,8 @@ class Service(object):
                 raise IOError("Projection of coordinates failed...")
 
     #/************************************************************************/
-    def project_quick(self, coord, iproj, oproj='WGS84'):
+    def project_apply(self, coord, iproj, oproj='WGS84'):
+        assert isinstance(coord, Sequence)
         if iproj == oproj:
             return coord
         try:
