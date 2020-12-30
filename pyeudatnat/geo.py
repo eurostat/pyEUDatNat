@@ -111,7 +111,7 @@ else:
     _is_pyproj_installed = True
     from pyproj import CRS as crs, Transformer
 
-from pyeudatnat import COUNTRIES
+from pyeudatnat import PACKNAME, COUNTRIES
 from pyeudatnat.misc import FileSys
 
 __CODERS        = { }
@@ -130,6 +130,8 @@ CODERS          = __CODERS                                                      
 
 # default geocoder... but this can be reset when declaring a subclass
 DEF_CODER       = {'Nominatim': None} # {'Bing' : None}
+
+DEF_AGENT       = PACKNAME
 
 DRIVERS         = {gdal.GetDriver(i).ShortName: gdal.GetDriver(i).LongName
                    for i in range(gdal.GetDriverCount())}
@@ -214,10 +216,10 @@ class Service(object):
 
     #/************************************************************************/
     @classmethod
-    def select_coder(cls, arg):
-        """Define geocoder.
+    def get_client(cls, arg):
+        """Define geocoder client.
 
-            >>> coder = Service.select_coder(arg)
+            >>> coder = Service.get_client(arg)
         """
         if arg is None:
             #arg = cls.DEF_CODER.copy()
@@ -250,6 +252,63 @@ class Service(object):
         return coder
 
     #/************************************************************************/
+    @classmethod
+    def get_geoclient(cls, *args, **kwargs):
+        try:
+            assert _is_geopy_installed is True
+        except:
+            raise ImportError("No instance of '%s' available" % self.__class__)
+        if not args in ((),(None,)):
+            coder = args[0]
+        else:
+            coder = kwargs.pop('coder', DEF_CODER) # None
+        geocoder = cls.get_client(coder)
+        coder = geocoder['coder']
+        key = CODERS.get(coder)
+        try:
+            gc = getattr(geopy.geocoders, coder)
+        except:
+            try:
+                get_gc = getattr(geopy.geocoders, 'get_geocoder_for_service')
+            except:
+                raise IOError("Coder not available")
+            else:
+                gc = get_gc(coder)
+        if not key is None:
+            kwargs.update({key: geocoder[key]})
+        return gc(**kwargs)
+
+    #/************************************************************************/
+    @classmethod
+    def geocoding(cls, query, coder = DEF_CODER, **kwargs):
+        """Geocoding operator.
+
+            >>> Service.geocoding(query, coder = DEF_CODER, **kwargs)
+
+        Example
+        -------
+
+            >>> loc = Service.geocoding( "175 5th Avenue NYC",
+                                         user_agent = 'Eurostat')
+            >>> print('lat=%s, lon=%s' % (loc.latitude, loc.longitude))
+                lat=40.741059199999995, lon=-73.98964162240998
+        """
+        return (cls.get_geoclient(coder = coder, **kwargs)
+                .geocode(query))
+
+    #TODO: consider using async mode
+    # see https://geopy.readthedocs.io/en/stable/#async-mode
+    # from geopy.adapters import AioHTTPAdapter
+    # from geopy.geocoders import Nominatim
+
+    # async with Nominatim(
+    #     user_agent="specify_your_app_name_here",
+    #     adapter_factory=AioHTTPAdapter,
+    # ) as geolocator:
+    #     location = await geolocator.geocode("175 5th Avenue NYC")
+    #     print(location.address)
+
+    #/************************************************************************/
     def __init__(self, *args,  **kwargs):
         try:
             assert _is_happy_installed is True or _is_geopy_installed is True
@@ -259,54 +318,64 @@ class Service(object):
             coder = args[0]
         else:
             coder = kwargs.pop('coder', DEF_CODER) # None
-        self.geocoder = self.select_coder(coder)
-        coder = self.geocoder['coder']
-        key = CODERS.get(coder)
+        # exactly_one = kwargs.pop('exactly_one',None)
+        self.agent = kwargs.pop('user_agent', DEF_AGENT)
+        self.client = self.get_client(coder)
+        coder = self.client['coder'].lower()
         try:
             assert _is_happy_installed is True
         except: # _is_geopy_installed is True and, hopefully, coder not in ('osm','GISCO')
-            if coder.lower() in ('osm','gisco'):
+            if coder in ('osm','gisco'):
                 raise IOError('geocoder %s not available' % coder)
-            try:
-                gc = getattr(geopy.geocoders, coder)
-            except:
-                raise IOError("Coder not available")
-            else:
-                if key is None:
-                    self.client = gc()
-                else:
-                    self.client = gc(**{key: self.geocoder[key]})
+            # try:
+            #     gc = getattr(geopy.geocoders, coder)
+            # except:
+            #     raise IOError("Coder not available")
+            # else:
+            #     kwargs.update({'user_agent': kwargs.pop('user_agent',DEF_AGENT)})
+            #     if not key is None:
+            #         kwargs.update({key: self.client[key]})
+            #     self.geoclient = gc(**kwargs)
+            kwargs.update({'user_agent': self.agent})
+            self.geoclient = self.get_geoclient(coder = self.client, **kwargs)
         else:
-            if coder.lower() == 'osm':
-                kwargs.pop('exactly_one')
-                self.client = services.OSMService()
-            elif coder.lower() == 'gisco':
-                kwargs.pop('exactly_one')
-                self.client = services.GISCOService()
+            if coder == 'osm':
+                self.geoclient = services.OSMService()
+            elif coder == 'gisco':
+                self.geoclient = services.GISCOService()
             else:
-                kwargs.pop('exactly_one')
-                self.client = services.APIService(**self.geocoder)
+                self.geoclient = services.APIService(**self.client)
         self.crs, self.proj = None, None # no use
 
     #/************************************************************************/
     def __getattr__(self, attr):
         if attr in ('im_class','__objclass__'):
-            return getattr(self.client, '__class__')
+            return getattr(self.geoclient, '__class__')
         elif attr.startswith('__'):  # to avoid some bug of the pylint editor
             try:        return object.__getattribute__(self, attr)
             except:     pass
-        try:        return getattr(self.client, attr)
+        try:        return getattr(self.geoclient, attr)
         except:     raise IOError("Attribute '%s' not available" % attr)
 
     #/************************************************************************/
     @property
-    def geocoder(self):
-        return self.__geocoder # or {}
-    @geocoder.setter#analysis:ignore
-    def geocoder(self, coder):
-        if not (coder is None or isinstance(coder, Mapping)):
-            raise TypeError("Wrong format for geocoder '%s' - must be a string" % coder)
-        self.__geocoder = coder
+    def agent(self):
+        return self.__agent# or {}
+    @agent.setter#analysis:ignore
+    def agent(self, agent):
+        if not (agent is None or isinstance(agent, string_types)):
+            raise TypeError("Wrong format for geocoder user AGENT '%s' - must be a string" % agent)
+        self.__agent = agent
+
+    #/************************************************************************/
+    @property
+    def client(self):
+        return self.__client# or {}
+    @client.setter#analysis:ignore
+    def client(self, client):
+        if not (client is None or isinstance(client, Mapping)):
+            raise TypeError("Wrong format for geocoder CLIENT '%s' - must be a dictionary" % client)
+        self.__client = client
 
     #/************************************************************************/
     def locate(self, *place, **kwargs):
@@ -327,20 +396,28 @@ class Service(object):
         kwargs.update({'order': 'lL', 'unique': True,
                       'exactly_one': True})
         if _is_happy_installed is True:
-            if self.geocoder['coder'] in ('osm','GISCO'):
+            if self.client['coder'] in ('osm','GISCO'):
                 kwargs.pop('exactly_one')
             else:
                 kwargs.pop('exactly_one')
-            return self.client.place2coord(place, **kwargs)
+            return self.geoclient.place2coord(place, **kwargs)
         # _is_geopy_installed is True
         kwargs.pop('unique', None) # just drop the key
         order = kwargs.pop('order', 'lL')
         try:
-            loc = self.client.geocode(place, **kwargs) # self.client._gc.geocode(place, **kwargs)
+            loc = self.geoclient.geocode(place, **kwargs) # self.client._gc.geocode(place, **kwargs)
             lat, lon = loc.latitude, loc.longitude
         except:
             lat = lon = np.nan
         return [lat,lon] if order == 'lL' else [lon, lat]
+
+    #/************************************************************************/
+    def locate_quick(self, place):
+        try:
+            loc = self.geoclient.geocode(place)
+            return loc.latitude, loc.longitude
+        except:
+            return (np.nan, np.nan)
 
     #/************************************************************************/
     def project(self, *coord, **kwargs):
@@ -368,7 +445,7 @@ class Service(object):
             return coord
         try:
             # assert _is_happy_installed is True
-            return self.client.coordproject(coord, iproj=iproj, oproj=oproj)
+            return self.geoclient.coordproject(coord, iproj=iproj, oproj=oproj)
         except:
             try:
                 # assert _is_pyproj_installed is True
@@ -376,6 +453,23 @@ class Service(object):
                 return Transformer.from_crs(CRS.from_epsg(iproj), CRS).transform(*coord)
             except:
                 raise IOError("Projection of coordinates failed...")
+
+    #/************************************************************************/
+    def project_quick(self, coord, iproj, oproj='WGS84'):
+        if iproj == oproj:
+            return coord
+        try:
+            return self.geoclient.coordproject(coord, iproj=iproj, oproj=oproj)
+        except:
+            try:
+                CRS = crs.from_epsg(oproj)
+                return (Transformer
+                        .from_crs(CRS.from_epsg(iproj), CRS)
+                        .transform(*coord)
+                        )
+            except:
+                return (np.nan, np.nan)
+
 
 #==============================================================================
 # Class Vector
