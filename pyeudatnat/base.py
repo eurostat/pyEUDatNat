@@ -335,7 +335,10 @@ class BaseDatNat():
     def proj(self, proj):
         if not (proj is None or isinstance(proj, string_types)):
             raise TypeError("Wrong format for PROJection:  '%s' - must be a string" % type(proj))
-        self.__options.update({'locate': {'proj': proj}})
+        if 'locate' in self.__options.keys():
+            self.__options['locate'].update({'proj': proj})
+        else:
+            self.__options.update({'locate': {'proj': proj}})
 
     @property
     def geocoder(self):
@@ -345,7 +348,11 @@ class BaseDatNat():
     def geocoder(self, coder):
         if not (coder is None or isinstance(coder, (string_types, Mapping))):
             raise TypeError("Wrong format for geoCODER: '%s' - must be a string or a dictionary" % type(coder))
-        self.__options.update({'locate': {'gc': None if coder is None else GeoService.get_client(coder)}})
+        gc = None if coder is None else GeoService.get_client(coder)
+        if 'locate' in self.__options.keys():
+            self.__options['locate'].update({'gc': gc})
+        else:
+            self.__options.update({'locate': {'gc': gc}})
 
     @property
     def lang(self):
@@ -881,6 +888,7 @@ class BaseDatNat():
             except ImportError:     raise IOError("No projection transformer available")
             except:
                 self.data[olat], self.data[olon] = zip(*self.data[[olat, olon]].apply(f))
+                self.proj = oproj # update
         # cast
         # self.data[olat], self.data[olon] = pd.to_numeric(self.data[olat]), pd.to_numeric(self.data[olon])
         try:
