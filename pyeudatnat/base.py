@@ -75,27 +75,30 @@ class BaseDatNat():
     CATEGORY    = None
     COUNTRY     = None # class attribute... that should not be different from cc
     CC          = None
-    DATE        = None
+    REFDATE     = None
     PUBDATE     = None # for versioning
 
     #/************************************************************************/
     def __init__(self, *args, **kwargs):
-        # self.__config, self.__metadata, self.__options = {}, {}, {}
-        self.__data, self.__buffer = None, None # data, content
-        self.__columns, self.__index = {}, []
+        # meta and config should be initialised in the derived class
+        # self.__config, self.__metadata = {}, {}
         try:
             # meta should be initialised in the derived class
             assert self.__metadata not in ({},None)
         except(AttributeError,AssertionError):
             if not args in ((),(None,)):
-                self.meta = MetaDat(args[0])
+                self.meta = MetaDatNat(args[0])
             else:
-                self.meta = MetaDat()
+                self.meta = MetaDatNat()
         try:
             # config should be initialised in the derived class
             assert self.__config not in ({},None)
         except (AttributeError,AssertionError):
             self.config = MetaDat()
+        # other attributes
+        self.__data, self.__buffer = None, None # data, content
+        self.__columns, self.__index = {}, []
+        #self.__options = {}
         try:
             assert self.__options not in ({},None)
         except (AttributeError,AssertionError):
@@ -123,7 +126,7 @@ class BaseDatNat():
                                'cache_force': kwargs.pop('cache_force',False)
                               })
         # retrieve reference date, if any
-        self.date = kwargs.pop('date', None) or self.DATE
+        self.refdate = kwargs.pop('date', None) or self.REFDATE
         self.pubdate = kwargs.pop('pubdate', None) or self.PUBDATE
         # why not: retrieve the geocoder and input data projection
         self.proj = kwargs.pop('proj', self.meta.get('proj')) # projection system
@@ -307,25 +310,32 @@ class BaseDatNat():
 
     @property
     def pubdate(self):
-        return self.meta.get('pubdate') or self.PUBDATE
+        return self.meta.get('date',{}).get('pub') #or self.PUBDATE
     @pubdate.setter
     def pubdate(self, date):
-        if date is None:                          pass
-        elif not isinstance(date, (int,string_types,datetime)):
+        if not(date is None or isinstance(date, (int,string_types,datetime))):
             raise TypeError("Wrong format for PUBDATE: '%s'" % type(date))
-        self.__metadata.update({'pubdate': date})
+        if self.meta.get('date') is not None:
+            if not(self.meta['date'].get('pub') is None and date is None):
+                self.__metadata['date'].update({'pub': date})
+        elif date is not None:
+            self.__metadata.update({'date': {'pub': date}})
 
     @property
-    def date(self):
-        return self.meta.get('refdate') or self.DATE
-    @date.setter
-    def date(self, refdate):
-        if not (refdate is None or isinstance(refdate, (datetime,int))):
-            raise TypeError("Wrong format for DATE: '%s' - must be an integer or a datetime" % type(refdate))
-        self.__metadata.update({'refdate': refdate})
-    @property
     def refdate(self):
-        return self.date
+        return self.meta.get('date',{}).get('ref') #or self.REFDATE
+    @refdate.setter
+    def refdate(self, date):
+        if not(date is None or isinstance(date, (int,string_types,datetime))):
+            raise TypeError("Wrong format for (REF)DATE: '%s' - must be an integer or a datetime" % type(refdate))
+        if self.meta.get('date') is not None:
+            if not(self.meta['date'].get('ref') is None and date is None):
+                self.__metadata['date'].update({'ref': date})
+        elif date is not None:
+            self.__metadata.update({'date': {'ref': date}})
+    @property
+    def date(self):
+        return self.refdate
 
     @property
     def proj(self):
@@ -335,9 +345,10 @@ class BaseDatNat():
     def proj(self, proj):
         if not (proj is None or isinstance(proj, string_types)):
             raise TypeError("Wrong format for PROJection:  '%s' - must be a string" % type(proj))
-        if proj is None and self.options.get('locate',{}).get('proj') is None:
+        if proj is None                                                     \
+            and (self.options.get('locate') is None or self.options['locate'].get('proj') is None):
             return # do nothing
-        if 'locate' in self.options.keys():
+        if self.options.get('locate') is not None:
             self.__options['locate'].update({'proj': proj})
         else:
             self.__options.update({'locate': {'proj': proj}})
@@ -351,9 +362,10 @@ class BaseDatNat():
         if not (coder is None or isinstance(coder, (string_types, Mapping))):
             raise TypeError("Wrong format for geoCODER: '%s' - must be a string or a dictionary" % type(coder))
         gc = None if coder is None else GeoService.get_client(coder)
-        if gc is None and self.options.get('locate',{}).get('gc') is None:
+        if gc is None                                                     \
+            and (self.options.get('locate') is None or self.options['locate'].get('gc') is None):
             return # do nothing
-        if 'locate' in self.options.keys():
+        if self.options.get('locate') is not None:
             self.__options['locate'].update({'gc': gc})
         else:
             self.__options.update({'locate': {'gc': gc}})
@@ -526,7 +538,8 @@ class BaseDatNat():
         """Retrieve the name of the column associated to a given field (e.g., manually
         defined), depending on the language.
 
-            >>> datnat.get_cols(cols=['col1', 'col2'], ilang=None, olang=None)
+            >>> datnat.get_cols(cols = ['col1', 'col2'], ilang = None, olang = None,
+                                force = False)
         """
         columns = (columns not in ((None,),()) and columns[0])              \
             or kwargs.pop('cols', None)
@@ -542,7 +555,7 @@ class BaseDatNat():
             langs = []
         # langs = list(dict.fromkeys([LANG, *langs])) # reorder with LANG first default...
         ilang = kwargs.pop('ilang', self.lang)
-        force = kwargs.pop('force', False)
+        force_translate = kwargs.pop('force', False)
         if ilang is None and not columns in (None, ('',), ()):
             # try to guess the language in the index
             #for ilang in langs:
@@ -584,7 +597,8 @@ class BaseDatNat():
             # raise IOError("Language '%s not available - provide with translations" % ilang)
             pass # raise IOError('no columns available')
         try:
-            assert (olang in langs and force is not True) or olang == self.lang
+            assert (olang in langs and force_translate is not True)         \
+                or olang == self.lang
             # if you add a filter, translation is forced
         except AssertionError:
             f = lambda cols:                                                \
@@ -609,6 +623,15 @@ class BaseDatNat():
 
     #/************************************************************************/
     def _list_cols(self, *columns, **kwargs):
+        """
+            >>> datanat._list_cols(self, *columns, **kwargs)
+
+        Keyword arguments
+        -----------------
+        keep : bool
+            flag to ensure all columns are preserved.
+        lang : str
+        """
         columns = (columns not in ((None,),()) and columns[0])              \
             or kwargs.pop('cols', None)
         if columns in ((),None):
@@ -619,7 +642,7 @@ class BaseDatNat():
             raise TypeError("Wrong input format for columns - must be a mapping or a list")
         if isinstance(columns, Sequence):
             columns = {c:c for c in columns}
-        force_keep = kwargs.pop('force', False)
+        keep_cols = kwargs.pop('keep', False)
         lang = kwargs.pop('lang', None) # or DEF_LANG
         nlist = {}
         for ind, col in columns.items():
@@ -628,7 +651,7 @@ class BaseDatNat():
             val = [list(c.values()) if lang is None else c[lang]
                    for c in self.cols if col in c.values()]
             if val == []:
-                if force_keep is False:
+                if keep_cols is False:
                     continue
                 val = [ind]
             val = val[0] if len(val) == 1 else val
@@ -637,6 +660,15 @@ class BaseDatNat():
 
     #/************************************************************************/
     def _match_cols(self, *columns, **kwargs):
+        """
+            >>> datanat._match_cols(self, *columns, **kwargs)
+
+        Keyword arguments
+        -----------------
+        keep : bool
+            flag to ensure all columns are preserved.
+        lang : str
+        """
         columns = (columns not in ((None,),()) and columns[0])              \
             or kwargs.pop('cols', None)
         if columns in ((),None):
@@ -647,7 +679,7 @@ class BaseDatNat():
             raise TypeError("Wrong input format for columns - must be a mapping or a list")
         if isinstance(columns, Sequence):
             columns =  {c:c for c in columns} # dict(zip(columns, columns))
-        force_keep = kwargs.pop('force', False)
+        keep_cols = kwargs.pop('keep', False)
         res, inv = {}, {}
         for ind, col in self.idx.items():
             val = [c.values() for c in self.cols if col in c.values()]
@@ -662,11 +694,11 @@ class BaseDatNat():
                 continue
             val = [c.values() for c in self.cols if col in c.values()]
             if val == []:
-                if force_keep is False:  continue # column/field unknown
+                if keep_cols is False:  continue # column/field unknown
                 val =[[]]
             val = list(set([v for v in val[0] if v in self.data.columns]))
             if val == []:
-                if force_keep is False:  continue
+                if keep_cols is False:  continue
                 val = [ind]
             res.update({ind: val[0] if len(val) == 1 else val})
         items = list(res.items())
@@ -674,7 +706,7 @@ class BaseDatNat():
             col_inv = inv.get(col,[])
             if col_inv is not None:
                 [res.update({c: col}) for c in col_inv]
-            if force_keep is False and ind not in col_inv:
+            if keep_cols is False and ind not in col_inv:
                 res.pop(ind)
         #oindex = self.config.get('index', {})
         #res = {oindex[k].get('name', k):v if k in oindex.keys() else k
@@ -685,7 +717,7 @@ class BaseDatNat():
     def _clean_cols(self, *columns, **kwargs):
         """Filter the dataframe.
 
-        >>> datnat._clean_cols(columns, **kwargs)
+            >>> datnat._clean_cols(columns, **kwargs)
 
         """
         columns = (columns not in ((None,),()) and columns[0])              \
@@ -705,7 +737,7 @@ class BaseDatNat():
         if keep_cols != []:
             columns = (set(columns) # set(self._list_cols(columns))
                             .difference(
-                                set(self._list_cols(keep_cols, force=True)) # or not? better be on the safe side
+                                set(self._list_cols(keep_cols, keep = True)) # or not? better be on the safe side
                                 )
                             )
         # drop the columns
@@ -748,9 +780,9 @@ class BaseDatNat():
         elif isinstance(columns, string_types):
             columns = [columns,]
         if lang is None:
-            columns = self._match_cols(columns, force = True)
+            columns = self._match_cols(columns, keep = True)
         else:
-            columns = self._list_cols(columns, lang = lang, force = True)
+            columns = self._list_cols(columns, lang = lang, keep = True)
         columns = columns.values()
         # return list(set(columns).intersection(self.data.columns))
         if not set(columns).issubset(self.data.columns):
@@ -769,7 +801,7 @@ class BaseDatNat():
         """Retrieve the geographical coordinates, may that be from existing lat/lon
         columns in the source file, or by geocoding the location name.
 
-            >>> datnat.locate_data(latlon=['lat', 'lon'], **kwargs)
+            >>> datnat.locate_data(latlon = ['lat', 'lon'], **kwargs)
         """
         latlon = (latlon not in ((None,),()) and latlon)                    \
             or kwargs.pop('latlon', None)
@@ -789,6 +821,10 @@ class BaseDatNat():
         except AssertionError:
             raise TypeError("Wrong type of PLACE columns name(s) '%s'" % place)
         order = kwargs.pop('order', 'lL')
+        try:
+            assert order in ['lL', 'Ll']
+        except AssertionError:
+            raise IOError("Unknown order keyword - must be 'lL' or 'Ll'")
         if latlon in ([],None):
             lat, lon = self.idx.get('lat', 'lat'), self.idx.get('lon', 'lon')
             order = 'lL'
@@ -803,8 +839,6 @@ class BaseDatNat():
             geoserv = GeoService(geocoder)
         except:
             geoserv = None
-        else:
-            self.geocoder = geocoder # update
         # defining names of geographical coordinates
         try:
             olat, olon = oindex['lat']['name'], oindex['lon']['name']
@@ -813,25 +847,28 @@ class BaseDatNat():
             olat, olon = 'lat', 'lon'
             otlat, otlon = None, None
         # generating geographical coordinates
-        if lat == lon and lat in self.data.columns:
-            latlon = lat
-            if order == 'lL':
-                lat, lon = olat, olon
-            elif order == 'Ll':
-                lat, lon = olon, olat
-            else:   raise IOError("Unknown order keyword - must be 'lL' or 'Ll'")
-            self.data[[lat, lon]] = self.data[latlon].str.split(pat=r'\s+', n=1, expand=True) #.astype(float)
-            geo_qual = 1
-        elif lat in self.data.columns and lon in self.data.columns:
-            if lat != olat:
-                self.data.rename(columns={lat: olat}, inplace=True)
-            if lon != olon:
-                self.data.rename(columns={lon: olon}, inplace=True)
+        if lat in self.data.columns and lon in self.data.columns:
+            if lat == lon:
+                latlon = lat
+                if order == 'lL':
+                    lat, lon = olat, olon
+                elif order == 'Ll':
+                    lat, lon = olon, olat
+                self.data[[lat, lon]] = (self.data[latlon].str
+                                         .split(pat = r'\s+', n = 1, expand = True)
+                                         #.astype(float)
+                                         )
+            else:
+                if lat != olat:
+                    self.data.rename(columns={lat: olat}, inplace=True)
+                if lon != olon:
+                    self.data.rename(columns={lon: olon}, inplace=True)
             geo_qual = 1
         else:
             if not oplace in self.data.columns:
-                mplace = self._match_cols(place, force = True)
-                place = [p for p in  [mplace[_] for _ in place] if p in self.data.columns]
+                mplace = self._match_cols(place, keep = True)
+                place = [p for p in  [mplace[_] for _ in place]
+                         if p in self.data.columns]
                 # place = list(set(list(place.values())).intersecmtion(self.data.columns))
                 if place == []:
                     raise IOError("No PLACE column(s) to be used for geolocation found in dataset")
@@ -854,6 +891,7 @@ class BaseDatNat():
                 self.data[olat], self.data[olon] = \
                     zip(*self.data[oplace].apply(f))
                 self.proj = None
+                self.geocoder = geocoder
             geo_qual = None # TBD
         try:
             assert ('lat' in oindex.keys() and 'lon' in oindex.keys())      \
@@ -893,6 +931,7 @@ class BaseDatNat():
             except:
                 self.data[olat], self.data[olon] = zip(*self.data[[olat, olon]].apply(f))
                 self.proj = oproj # update
+                self.geocoder = geocoder # update, if not done already earlier
         # cast
         # self.data[olat], self.data[olon] = pd.to_numeric(self.data[olat]), pd.to_numeric(self.data[olon])
         try:
@@ -950,7 +989,7 @@ class BaseDatNat():
             attr = getattr(self, _col, None) # np.nan
             if attr in ('', ' ', [], (), None, 'UNK', 'NaN', np.nan):
                 continue
-            self.data[col] = attr
+            self.data[col] = attr # possibly overriden later on
             columns.update({_col: col})
             try:
                 assert _col in self.idx.keys() # and already: _col in oindex.keys()
@@ -1175,23 +1214,35 @@ class BaseDatNat():
         self.config.dump(*dest, **kwargs)
 
     #/************************************************************************/
-    def get_meta(self, keys = None, **kwargs):
-        force = kwargs.pop('force', False)
+    def get_meta(self, keys = False, keep = False, force = False):
         meta = self.meta.to_dict() # self.meta.__dict__
         mkeys = list(meta.keys())
-        if keys in (None,True):
-            keys = mkeys
+        if keys is True:
+            keys, keep = self.meta.PROPERTIES or MetaDatNat.PROPERTIES, keep or True
+        elif keys is None:
+            keys, keep = mkeys, keep or True
         elif keys is False:
-            keys = MetaDatNat.PROPERTIES
-        keys = list(set(keys).intersection(set(mkeys)))
+            keys, keep = mkeys, keep or False
+        if keys == []:
+            keys = mkeys
+        # keys = list(set(keys).intersection(set(mkeys)))
         if force is True:
-            key2attr = {'index': 'idx', 'columns': 'cols', 'options': 'options'}
-            for attr in key2attr.keys():
-                try:
-                    meta.update({attr:
-                                 deepcopy(getattr(self,key2attr[attr]))
-                                 })
-                except:         pass
+            keys = list(set(keys).union(set(['index'])))
+        else:
+            keys = list(set(keys).difference(set(['index'])))
+        keytoattr = {'index': 'idx', 'options': 'options', 'columns': 'cols'}
+        for k in keys:
+            try:
+                if k in ['country', 'lang', 'cc', 'file', 'pubdate', 'refdate']: #others?
+                    pass # self-updating properties
+                elif k in ['index', 'options', 'columns']:
+                    meta.update({k: deepcopy(getattr(self, keytoattr[k]))})
+                else:
+                    meta.update({k: getattr(self,k)})
+            except:
+                if keep is False or k in mkeys:
+                    continue
+                meta.update({k: None})
         [meta.pop(k) for k in mkeys if k not in keys]
         return meta
 
@@ -1199,7 +1250,8 @@ class BaseDatNat():
     def update_meta(self):
         """Update the metadata file.
         """
-        self.meta.update(self.get_meta(keys = True, force = True))
+        # self.meta.update(self.get_meta(keys = False, force = True))
+        self.meta.update(self.get_meta(keys = True, force = True, keep = True))
 
     #/************************************************************************/
     def _dump_meta(self, **kwargs):
@@ -1223,8 +1275,8 @@ class BaseDatNat():
 
             >>> datnat.save_meta(dest=metaname)
         """
-        dest = (dest not in ((None,),()) and dest[0])               or \
-             kwargs.pop('dest', None)
+        dest = (dest not in ((None,),()) and dest[0])                       \
+             or kwargs.pop('dest', None)
         fmt = kwargs.pop('fmt', None)
         if fmt is None:
             fmt = 'json'
@@ -1242,6 +1294,8 @@ class BaseDatNat():
                 dest = osp.join(PACKPATH, '%s.json' % self.cc)
             logging.warning("\n! Metadata file '%s.%s' will be created" %
                             (FileSys.basename(dest),fmt))
+        # Get the dictionary: default will be with current keys (keys=False),
+        # nothing added (keep = False, force = False)
         meta = self.get_meta(**kwargs)
         kwargs.update({'ensure_ascii': kwargs.pop('ensure_ascii', False)})
         # kwargs = Object.inspect_kwargs(kwargs, Json.dump)
@@ -1273,12 +1327,14 @@ def datnatFactory(*args, **kwargs):
     # check facility to define output data configuration format
     if args in ((),(None,)):        config = None
     else:                           config = args[0]
+    classes = kwargs.pop('cls', {})
     config = config or kwargs.pop('config', None)
+    cfgcls = classes.pop('cfg', MetaDat)
     try:
-        assert config is None or isinstance(config, (Mapping,MetaDat))
+        assert config is None or isinstance(config, (Mapping,cfgcls,MetaDat))
     except AssertionError:
         raise TypeError("Configuration type '%s' not recognised - must be a dictionary or %s" % (type(config),MetaDat.__name__))
-    if config is None or isinstance(config, MetaDat):
+    if config is None or isinstance(config, (cfgcls,MetaDat)):
         pass
     #elif isinstance(cfg, string_types):
     #    try:
@@ -1298,7 +1354,7 @@ def datnatFactory(*args, **kwargs):
     #        raise IOError("Configuration metadata '%s' not recognised" % str(config))
     elif isinstance(config, Mapping):
         try:
-            config = MetaDat(config)
+            config = cfgcls(config) # for instance (default): MetaDat(config)
         except:     raise IOError("Configuration dictionary '%s' not recognised" % config)
     try:
         category = config.category if hasattr(config, 'category') else config.get("category")
@@ -1313,30 +1369,35 @@ def datnatFactory(*args, **kwargs):
             else kwargs.pop('options', None)
         assert oopts is None or isinstance(oopts,Mapping)
     except AssertionError:
-        raise TypeError("Options type '%s' not recognised - must be a dictionary" % type(oopts))
+        raise TypeError("OPTIONS type '%s' not recognised - must be a dictionary" % type(oopts))
     # check metadata of input data
     meta = kwargs.pop('meta', None)
+    metacls = classes.pop('meta', MetaDatNat)
     try:
-        assert meta is None or isinstance(meta,(string_types,Mapping,MetaDatNat))
+        assert meta is None or isinstance(meta,(string_types,Mapping,metacls,MetaDatNat))
     except AssertionError:
-        raise TypeError("Metadata type '%s' not recognised - must be a filename, dictionary or %s" % (type(meta),MetaDatNat.__name__))
+        raise TypeError("METAdata type '%s' not recognised - must be a filename, dictionary or %s" % (type(meta),MetaDatNat.__name__))
+    try:
+        assert isinstance(metacls,type)
+    except AssertionError:
+        raise TypeError("METAdata CLasS type '%s' not recognised - must be a type, like %s" % (type(metacls),MetaDatNat.__name__))
     if meta is None:
-        pass # meta = None # meta = MetaDatNat({})
-    elif isinstance(meta,MetaDatNat):
+        pass # meta = None # meta = metacls({})
+    elif isinstance(meta, (MetaDatNat,metacls)):
         try:
             meta = meta.copy()
         except:     raise IOError("Metadata '%s' not recognised "  % meta)
     elif isinstance(meta, (string_types, Mapping)):
         try:
-            meta = MetaDatNat(meta)
+            meta = metacls(meta) # for instance (default): MetaDatNat(meta)
         except:     raise IOError("Metadata '%s' not recognised " % meta)
     # check country
     try:
         country = meta.get('country') if meta is not None and 'country' in meta \
             else kwargs.pop('country', None)
-        assert country is None or isinstance(country,(Mapping,string_types))
+        assert country is None or isinstance(country, (Mapping,string_types))
     except AssertionError:
-        raise IOError("Country type '%s' not recognised - must be a string or a dictionary" % type(country))
+        raise IOError("COUNTRY type '%s' not recognised - must be a string or a dictionary" % type(country))
     try:
         country = isoCountry(country)
     except:
@@ -1346,10 +1407,11 @@ def datnatFactory(*args, **kwargs):
                            'COUNTRY': country.get('name')})
     # check pubdate version
     try:
-        pubdate = meta.get('pubdate') if meta is not None and 'pubdate' in meta else kwargs.pop('pubdate', None)
+        date = meta.get('date') if meta is not None and 'date' in meta else {}
+        pubdate = date.get('pub') if date is not None else kwargs.pop('pubdate', None)
         assert pubdate is None or isinstance(pubdate,int) or isinstance(pubdate,datetime)
     except AssertionError:
-        raise IOError("Version type '%s' not recognised - must be an integer or a date" % type(version))
+        raise IOError("PUBlication DATE type '%s' not recognised - must be an integer or a date" % type(pubdate))
     else:
         attributes.update({'PUBDATE': pubdate})
     # redefine the initialisation method
@@ -1359,14 +1421,19 @@ def datnatFactory(*args, **kwargs):
             self.config = None if config is None else config.copy()
             # note: creating a "copy" actually creates another TypeFacility instance,
             # so that this attribute differs from one instance to the other!
-        except:
-            pass
+            assert self.config not in ({},None)
+        except (AttributeError,AssertionError):
+            self.config = cfgcls()
         # one metadata dictionary defined 'per country'
         try:
             self.meta = None if meta is None else meta.copy()
             # ibid: creating a "copy" actually creates another MetaFacility instance
-        except:
-            pass
+            assert self.meta not in ({},None)
+        except(AttributeError,AssertionError):
+            if not args in ((),(None,)):
+                self.meta = metacls(args[0])
+            else:
+                self.meta = metacls()
         #for key, value in kwargs.items():
         #    # here, the argnames variable is the one passed to the
         #    # ClassFactory call
