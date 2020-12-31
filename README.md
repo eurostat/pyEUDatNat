@@ -38,7 +38,7 @@ the national data:
 
 ```python
 >>> from pyeudatnat import base
->>> NewDataCategory = base.datnatFactory(category = 'new')
+>>> NewDataCategory = base.datnatFactory(cat = 'new')
 ```
 
 Following, it is pretty straigthforward to create an instance of a national dataset:
